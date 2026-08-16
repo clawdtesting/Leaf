@@ -26,9 +26,9 @@ interface BuildingDef {
 
 const BUILDINGS: BuildingDef[] = [
   { key: 'cabin', name: "Explorer's Guild", x: 150, y: 200, action: 'ECOSYSTEM_RESEARCH', target: 'Robinhood Chain', details: 'Find 10 projects with demonstrated real utility' },
-  { key: 'workshop', name: 'The Forge', x: 350, y: 200, action: 'BUILD_AGENT', target: 'AGI Alpha Agent', details: 'Forge a new agent from a job spec' },
-  { key: 'watchtower', name: 'Auditor Tower', x: 550, y: 200, action: 'AUDIT', target: 'Active Jobs', details: 'Audit and validate recently completed jobs' },
-  { key: 'greenhouse', name: 'Nova Garden', x: 700, y: 200, action: 'CULTIVATE', target: 'Ecosystem', details: 'Nurture and stake into promising projects' },
+  { key: 'workshop', name: 'The Forge', x: 350, y: 200, action: 'SMART_CONTRACT_DEVELOPMENT', target: 'Settlement contract', details: 'Build a settlement contract with signed offers and a 1% fee' },
+  { key: 'watchtower', name: 'Auditor Tower', x: 550, y: 200, action: 'SMART_CONTRACT_AUDIT', target: 'Vault contract', details: 'Audit the provided contract for security issues' },
+  { key: 'greenhouse', name: 'Nova Garden', x: 700, y: 200, action: 'CAPABILITY_DISCOVERY', target: 'Cross-chain auditing', details: 'Seed a new capability where existing ones fall short' },
 ];
 
 /* --------------------------------------------------------------

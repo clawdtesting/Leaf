@@ -1,0 +1,288 @@
+// The Emperor operator: the privileged layer between game intents and the
+// Montréal.AI subsystems. It validates an intent against the capability
+// registry (policy boundary), decides a route, then runs a staged mission that
+// produces action-specific results, carries evidence, and is independently
+// validated before acceptance.
+//
+// Execution here is SIMULATED but "real-shaped": each stage and the evidence
+// model match the proof-carrying-mission design in docs/GAME_AGI_CONCEPT.md,
+// so a real GoalOS / AGIJobManager / agent executor can be dropped into
+// `runExecutor` without changing the lifecycle or API.
+
+import { ActionDef, getAction } from './capabilities';
+
+export interface EvidenceItem {
+  type: string;
+  ref?: string;
+  summary: string;
+}
+
+export type MissionStatus =
+  | 'accepted'
+  | 'planning'
+  | 'executing'
+  | 'validating'
+  | 'completed'
+  | 'failed';
+
+export interface Intent {
+  action: string;
+  target: string;
+  details: string;
+}
+
+export interface MissionRecord {
+  id: string;
+  intent: Intent;
+  capability: string;
+  building: string;
+  route: ActionDef['route'];
+  budgetClass: string;
+  status: MissionStatus;
+  plan: string[];
+  evidence: EvidenceItem[];
+  validation?: { verdict: 'PASS' | 'FAIL'; validator: string; notes: string };
+  result?: any;
+  cost?: { unit: string; amount: number };
+  log: { t: number; stage: string; note: string }[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+const missions = new Map<string, MissionRecord>();
+let counter = 1;
+
+export function getMission(id: string): MissionRecord | undefined {
+  return missions.get(id);
+}
+
+function touch(m: MissionRecord, stage: string, note: string) {
+  m.updatedAt = Date.now();
+  m.log.push({ t: m.updatedAt, stage, note });
+}
+
+/**
+ * Accept a validated intent, create a mission record, and kick off the staged
+ * pipeline. Returns the record immediately (status 'accepted').
+ */
+export function createMission(intent: Intent): MissionRecord {
+  const def = getAction(intent.action);
+  if (!def) throw new Error(`Unknown action: ${intent.action}`);
+
+  const id = String(counter++);
+  const now = Date.now();
+  const m: MissionRecord = {
+    id,
+    intent,
+    capability: def.capability,
+    building: def.building,
+    route: def.route,
+    budgetClass: def.budgetClass,
+    status: 'accepted',
+    plan: [],
+    evidence: [],
+    log: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+  missions.set(id, m);
+  touch(m, 'accepted', `Emperor accepted intent for ${def.capability} (${def.route}).`);
+  runPipeline(m, def);
+  return m;
+}
+
+/* ------------------------------------------------------------------ */
+/* Staged pipeline: plan -> execute -> validate -> complete            */
+/* ------------------------------------------------------------------ */
+function runPipeline(m: MissionRecord, def: ActionDef) {
+  // 1) Planning (GoalOS-style decomposition; skipped detail for LOCAL routes)
+  setTimeout(() => {
+    m.status = 'planning';
+    m.plan = buildPlan(def, m.intent);
+    touch(m, 'planning', `Decomposed objective into ${m.plan.length} steps via ${def.route}.`);
+
+    // 2) Execution (produces action-specific result + evidence)
+    setTimeout(() => {
+      m.status = 'executing';
+      touch(m, 'executing', `Executing ${def.capability} work.`);
+      const { result, evidence, cost } = runExecutor(def, m.intent);
+      m.result = result;
+      m.evidence = evidence;
+      m.cost = cost;
+
+      // 3) Validation (independent check against required evidence)
+      setTimeout(() => {
+        m.status = 'validating';
+        m.validation = validate(def, m.evidence);
+        touch(m, 'validating', `Independent validation: ${m.validation.verdict}.`);
+
+        // 4) Acceptance / completion
+        setTimeout(() => {
+          if (m.validation && m.validation.verdict === 'PASS') {
+            m.status = 'completed';
+            touch(m, 'completed', 'Evidence accepted; mission settled.');
+          } else {
+            m.status = 'failed';
+            touch(m, 'failed', 'Validation failed; result not accepted.');
+          }
+        }, 1200);
+      }, 1800);
+    }, 2200);
+  }, 1200);
+}
+
+function buildPlan(def: ActionDef, intent: Intent): string[] {
+  switch (def.action) {
+    case 'ECOSYSTEM_RESEARCH':
+      return [
+        'Discover candidate universe',
+        'Verify project existence',
+        'Inspect documentation, contracts and repositories',
+        'Assess product utility and risk',
+        'Collect evidence and score candidates',
+        'Produce ranked conclusion',
+      ];
+    case 'SMART_CONTRACT_DEVELOPMENT':
+      return ['Capture requirements', 'Threat model', 'Implement Solidity', 'Write Foundry tests', 'Static analysis', 'Package deliverable'];
+    case 'SMART_CONTRACT_AUDIT':
+      return ['Retrieve source', 'Architecture analysis', 'Static + manual review', 'Attack hypotheses', 'Reproduce findings', 'Severity + report'];
+    case 'UI_APPLICATION_BUILD':
+      return ['Inspect repository', 'Analyze UX', 'Propose design', 'Implement', 'Build + visual check', 'Tests + deliverable'];
+    case 'FRONTIER_MONITOR':
+      return ['Gather sources', 'Filter signal', 'Summarize trends and threats'];
+    case 'CAPABILITY_DISCOVERY':
+      return ['Detect capability gap', 'Generate candidate approaches', 'Evaluate candidates', 'Fresh-work test', 'Promote or reject'];
+    case 'VALIDATION':
+      return ['Load artifact', 'Check against acceptance criteria', 'Issue verdict'];
+    default:
+      return ['Plan', 'Execute', 'Validate'];
+  }
+}
+
+/**
+ * SIMULATED executor. Swap this for real GoalOS/AGIJobManager/agent calls.
+ * Returns an action-specific result plus the evidence it carries. The result
+ * always includes `message` and a `data: string[]` summary so simple clients
+ * can render it, alongside richer structured fields.
+ */
+function runExecutor(def: ActionDef, intent: Intent): {
+  result: any;
+  evidence: EvidenceItem[];
+  cost: { unit: string; amount: number };
+} {
+  const target = intent.target || 'the target';
+  switch (def.action) {
+    case 'ECOSYSTEM_RESEARCH': {
+      const projects = Array.from({ length: 10 }, (_, i) => ({
+        rank: i + 1,
+        name: `${target} Project ${i + 1}`,
+        utility: ['DeFi', 'Infra', 'Tooling', 'Gaming', 'RWA'][i % 5],
+        repo: `https://example.org/${target.toLowerCase().replace(/\s+/g, '-')}/p${i + 1}`,
+      }));
+      return {
+        result: {
+          message: `Survey of ${target} complete — 10 qualifying projects.`,
+          summary: `Ranked 10 projects on ${target} by demonstrated utility.`,
+          data: projects.map(p => `#${p.rank} ${p.name} (${p.utility})`),
+          projects,
+        },
+        evidence: [
+          { type: 'repository', ref: 'bundle://repos', summary: '10 repositories inspected' },
+          { type: 'contracts', ref: 'bundle://contracts', summary: 'Deployed contracts verified' },
+          { type: 'documentation', summary: 'Official docs reviewed for each candidate' },
+          { type: 'product', summary: 'Product utility assessed' },
+        ],
+        cost: { unit: 'USDC', amount: 0 },
+      };
+    }
+    case 'SMART_CONTRACT_DEVELOPMENT': {
+      return {
+        result: {
+          message: `Contract for "${target}" built and tested.`,
+          summary: `Delivered Solidity implementation with passing tests for ${target}.`,
+          data: ['Settlement.sol', '12/12 Foundry tests passing', 'Slither: 0 high findings'],
+          deliverable: { contract: 'Settlement.sol', tests: 12, passing: 12 },
+        },
+        evidence: [
+          { type: 'source', ref: 'artifact://Settlement.sol', summary: 'Solidity source' },
+          { type: 'tests', ref: 'artifact://foundry', summary: '12/12 tests passing' },
+          { type: 'static-analysis', summary: 'Slither clean (no high/critical)' },
+          { type: 'documentation', summary: 'NatSpec + README' },
+        ],
+        cost: { unit: 'USDC', amount: 0 },
+      };
+    }
+    case 'SMART_CONTRACT_AUDIT': {
+      const findings = [
+        { id: 'H-1', severity: 'High', title: 'Reentrancy in withdraw()' },
+        { id: 'M-1', severity: 'Medium', title: 'Missing zero-address check' },
+        { id: 'L-1', severity: 'Low', title: 'Unbounded loop in settle()' },
+      ];
+      return {
+        result: {
+          message: `Audit of "${target}" complete — ${findings.length} findings.`,
+          summary: `Security review of ${target}: 1 High, 1 Medium, 1 Low.`,
+          data: findings.map(f => `[${f.severity}] ${f.id} ${f.title}`),
+          findings,
+        },
+        evidence: [
+          { type: 'findings', summary: '3 findings identified' },
+          { type: 'severity', summary: 'Findings classified: 1 High, 1 Medium, 1 Low' },
+          { type: 'reproduction', ref: 'artifact://poc', summary: 'Foundry PoC for H-1' },
+          { type: 'tests', summary: 'Regression tests for each finding' },
+        ],
+        cost: { unit: 'USDC', amount: 0 },
+      };
+    }
+    case 'CAPABILITY_DISCOVERY': {
+      return {
+        result: {
+          message: `NovaSeed evaluated a candidate capability for "${target}".`,
+          summary: `Candidate grown and tested on fresh work; awaiting promotion review.`,
+          data: ['Candidate: cross-domain-research-v2', 'Fresh-work eval: +8% vs current', 'Status: under successor test'],
+          candidate: { name: 'cross-domain-research-v2', freshEvalDelta: '+8%' },
+        },
+        evidence: [
+          { type: 'candidate', summary: 'Candidate capability specification' },
+          { type: 'fresh-evaluation', ref: 'eval://fresh-mission', summary: 'Evaluated on unseen task' },
+        ],
+        cost: { unit: '$GAME', amount: 0 },
+      };
+    }
+    case 'FRONTIER_MONITOR': {
+      return {
+        result: {
+          message: `Frontier scan for "${target}" complete.`,
+          summary: 'Notable trends and threats summarized.',
+          data: ['3 emerging trends', '1 potential threat flagged'],
+        },
+        evidence: [
+          { type: 'sources', summary: 'Source set gathered' },
+          { type: 'summary', summary: 'Signal-filtered brief' },
+        ],
+        cost: { unit: 'USDC', amount: 0 },
+      };
+    }
+    default: {
+      return {
+        result: { message: `${def.capability} completed for "${target}".`, data: ['done'] },
+        evidence: def.requiredEvidence.map(e => ({ type: e, summary: `${e} produced` })),
+        cost: { unit: 'USDC', amount: 0 },
+      };
+    }
+  }
+}
+
+/** Independent validation: every required evidence type must be present. */
+function validate(def: ActionDef, evidence: EvidenceItem[]): {
+  verdict: 'PASS' | 'FAIL';
+  validator: string;
+  notes: string;
+} {
+  const present = new Set(evidence.map(e => e.type));
+  const missing = def.requiredEvidence.filter(r => !present.has(r));
+  if (missing.length === 0) {
+    return { verdict: 'PASS', validator: 'hall-of-judgment', notes: 'All required evidence present.' };
+  }
+  return { verdict: 'FAIL', validator: 'hall-of-judgment', notes: `Missing evidence: ${missing.join(', ')}` };
+}
