@@ -223,7 +223,7 @@ export default function App() {
   useEffect(() => {
     // One interior scene per building (registers Interior-<key>)
     const interiors = BUILDINGS.map(
-      b => new InteriorScene({ buildingKey: b.key, interiorImg: `${b.key}-inside.png`, leaveLabel: 'Leave' })
+      b => new InteriorScene({ buildingKey: b.key, interiorImg: `${b.key}-inside.png`, title: b.name, leaveLabel: 'Leave (Esc)' })
     );
     const game = new Game({
       type: Phaser.AUTO,

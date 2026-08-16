@@ -1,23 +1,31 @@
 // packages/game-client/src/InteriorScene.tsx
-import React from 'react';
-import { Types, Scene, GameObjects } from 'phaser';
+import { Scene, GameObjects, Physics, Types, Input } from 'phaser';
 
 interface InteriorSceneProps {
   /** The building key (must match one of the BUILDINGS entries) */
   buildingKey: string;
   /** Filename of the interior image (without path) */
   interiorImg: string;
+  /** Human-readable building name shown as a title */
+  title?: string;
   /** Optional text to show on the “Leave” button */
   leaveLabel?: string;
 }
 
+const LEAF_FRAME = 64;
+const LEAF_SPEED = 140;
+
 /**
- * A simple Phaser Scene that displays an interior image and a button to go back.
+ * Interior of a building. Shows the room image, spawns a controllable Leaf that
+ * walks around inside the walls, and provides a place to add per-building
+ * actions later (see the ACTIONS hook in create()).
  */
 export class InteriorScene extends Scene {
   private props: InteriorSceneProps;
   private interior!: GameObjects.Image;
-  private leaveBtn!: GameObjects.Text;
+  private leaf!: Physics.Arcade.Sprite;
+  private cursors!: Types.Input.Keyboard.CursorKeys;
+  private lastDir: 'down' | 'up' | 'left' | 'right' = 'down';
 
   constructor(props: InteriorSceneProps) {
     super({ key: `Interior-${props.buildingKey}` });
@@ -25,11 +33,17 @@ export class InteriorScene extends Scene {
   }
 
   preload() {
-    // Load the interior image (adjust the path if you store it elsewhere)
-    this.load.image(
-      this.props.interiorImg,
-      `/assets/${this.props.interiorImg}`
-    );
+    // Interior room image
+    if (!this.textures.exists(this.props.interiorImg)) {
+      this.load.image(this.props.interiorImg, `/assets/${this.props.interiorImg}`);
+    }
+    // Leaf spritesheet (normally already loaded by the outside scene)
+    if (!this.textures.exists('leaf')) {
+      this.load.spritesheet('leaf', '/assets/leaf.png', {
+        frameWidth: LEAF_FRAME,
+        frameHeight: LEAF_FRAME,
+      });
+    }
   }
 
   create() {
@@ -38,28 +52,101 @@ export class InteriorScene extends Scene {
     // Opaque background so the paused outside scene doesn't show through
     this.cameras.main.setBackgroundColor('#140d07');
 
-    // ESC also leaves the interior
-    this.input.keyboard?.once('keydown-ESC', () => this.leave());
-
-    // Show the interior image, centered
+    // ----- Room image, centered and scaled to fit -----
     this.interior = this.add.image(width / 2, height / 2, this.props.interiorImg);
-    // Scale to fit screen while preserving aspect ratio (adjust as needed)
     const scale = Math.min(width / this.interior.width, height / this.interior.height) * 0.9;
-    this.interior.setScale(scale);
+    this.interior.setScale(scale).setDepth(0);
 
-    // Leave button at the bottom
-    const leaveText = this.props.leaveLabel ?? 'Leave';
-    this.leaveBtn = this.add
-      .text(width / 2, height - 40, leaveText, {
-        fontFamily: 'monospace',
-        fontSize: '18px',
-        color: '#ff0',
-        backgroundColor: '#0005',
-        padding: { x: 12, y: 6 },
+    // Walkable floor = the room rectangle, inset so Leaf stays "inside the walls"
+    const roomW = this.interior.displayWidth;
+    const roomH = this.interior.displayHeight;
+    const left = width / 2 - roomW / 2;
+    const top = height / 2 - roomH / 2;
+    const wall = Math.min(roomW, roomH) * 0.12; // wall thickness
+    const floor = {
+      x: left + wall,
+      y: top + wall,
+      w: roomW - wall * 2,
+      h: roomH - wall * 2,
+    };
+    this.physics.world.setBounds(floor.x, floor.y, floor.w, floor.h);
+
+    // ----- Leaf (controllable), spawned near the bottom-center (the door) -----
+    this.ensureAnims();
+    this.leaf = this.physics.add.sprite(width / 2, floor.y + floor.h - 20, 'leaf');
+    this.leaf.setScale(0.9).setDepth(10);
+    this.leaf.setCollideWorldBounds(true);
+    const body = this.leaf.body as Physics.Arcade.Body;
+    body.setSize(LEAF_FRAME * 0.4, LEAF_FRAME * 0.35);
+    body.setOffset(LEAF_FRAME * 0.3, LEAF_FRAME * 0.55);
+    this.leaf.setFrame(4); // facing up, into the room
+    this.lastDir = 'up';
+
+    this.cursors = this.input.keyboard!.createCursorKeys();
+
+    // ----- Title -----
+    this.add
+      .text(width / 2, top + wall * 0.4, this.props.title ?? this.props.buildingKey, {
+        fontFamily: 'monospace', fontSize: '16px', color: '#ffe9a8',
+        backgroundColor: '#00000088', padding: { x: 8, y: 4 },
       })
       .setOrigin(0.5)
+      .setDepth(100);
+
+    // ----- Leave button + ESC -----
+    this.add
+      .text(width / 2, height - 28, this.props.leaveLabel ?? 'Leave (Esc)', {
+        fontFamily: 'monospace', fontSize: '18px', color: '#ff0',
+        backgroundColor: '#0008', padding: { x: 12, y: 6 },
+      })
+      .setOrigin(0.5)
+      .setDepth(100)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.leave());
+    this.input.keyboard?.once('keydown-ESC', () => this.leave());
+
+    // ----- Per-building ACTIONS hook -----
+    // Future: add interaction spots (quest board, forge anvil, etc.) here,
+    // keyed off this.props.buildingKey. e.g. an overlap zone that opens a menu.
+    // this.setupActions(this.props.buildingKey);
+  }
+
+  private ensureAnims() {
+    const mk = (key: string, start: number, end: number) => {
+      if (!this.anims.exists(key)) {
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers('leaf', { start, end }),
+          frameRate: 6,
+          repeat: -1,
+        });
+      }
+    };
+    mk('walk-down', 0, 2);
+    mk('walk-up', 3, 5);
+    mk('walk-left', 6, 8);
+    mk('walk-right', 9, 11);
+  }
+
+  update() {
+    if (!this.leaf) return;
+    let vx = 0;
+    let vy = 0;
+    if (this.cursors.left?.isDown) vx = -LEAF_SPEED;
+    else if (this.cursors.right?.isDown) vx = LEAF_SPEED;
+    if (this.cursors.up?.isDown) vy = -LEAF_SPEED;
+    else if (this.cursors.down?.isDown) vy = LEAF_SPEED;
+    this.leaf.setVelocity(vx, vy);
+
+    if (vx !== 0 || vy !== 0) {
+      if (Math.abs(vx) > Math.abs(vy)) this.lastDir = vx < 0 ? 'left' : 'right';
+      else this.lastDir = vy < 0 ? 'up' : 'down';
+      this.leaf.anims.play(`walk-${this.lastDir}`, true);
+    } else {
+      this.leaf.anims.stop();
+      const idle: Record<string, number> = { down: 1, up: 4, left: 7, right: 10 };
+      this.leaf.setFrame(idle[this.lastDir] ?? 1);
+    }
   }
 
   private leave() {
