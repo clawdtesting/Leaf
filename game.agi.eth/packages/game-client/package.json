@@ -12,7 +12,8 @@
     "react-dom": "^18.2.0",
     "wagmi": "^1.4.0",
     "viem": "^1.0.0",
-    "phaser": "^3.60.0"
+    "phaser": "^3.60.0",
+    "ethers": "^6.7.0"
   },
   "devDependencies": {
     "@types/react": "^18.0.0",

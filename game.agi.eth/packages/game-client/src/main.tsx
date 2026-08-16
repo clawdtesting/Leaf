@@ -148,9 +148,11 @@ function create(this: Phaser.Scene) {
 }
 
 function enterBuilding(scene: any, b: BuildingDef) {
-  sendIntent(b);
+  // Don't auto-fire a hardcoded quest. Enter the building and open the
+  // mission-intake form so the player states what they actually want.
   scene.scene.pause('outside');
   scene.scene.launch(`Interior-${b.key}`);
+  if (window.openIntake) window.openIntake(b);
 }
 
 function update(this: Phaser.Scene) {
@@ -298,6 +300,11 @@ export default function App() {
   const [questLoading, setQuestLoading] = useState<boolean>(false);
   const [questData, setQuestData] = useState<any>(null);
 
+  // ----- Mission intake (ask the player what they want) -----
+  const [intakeBuilding, setIntakeBuilding] = useState<BuildingDef | null>(null);
+  const [intakeTarget, setIntakeTarget] = useState('');
+  const [intakeDetails, setIntakeDetails] = useState('');
+
   // ----- Wallet / Auth state -----
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [walletConnected, setWalletConnected] = useState(false);
@@ -340,19 +347,41 @@ export default function App() {
     });
     window.setQuestInProgress = setQuestInProgress;
     window.setJobId = setJobId;
+    window.openIntake = (b) => {
+      setIntakeBuilding(b as BuildingDef);
+      setIntakeTarget(b.target);
+      setIntakeDetails(b.details);
+    };
     return () => {
       game.destroy(true);
       delete window.setQuestInProgress;
       delete window.setJobId;
+      delete window.openIntake;
     };
   }, []);
+
+  // Dispatch the player-authored mission as a structured intent.
+  const dispatchMission = () => {
+    if (!intakeBuilding) return;
+    sendIntent(
+      {
+        ...intakeBuilding,
+        target: intakeTarget.trim() || intakeBuilding.target,
+        details: intakeDetails.trim() || intakeBuilding.details,
+      },
+      walletAddress,
+    );
+    setIntakeBuilding(null);
+  };
 
   // ----- Poll quest status -----
   useEffect(() => {
     if (!jobId) return;
     const interval = setInterval(async () => {
       try {
-        const resp = await fetch(`http://localhost:3001/job/${jobId}/status`);
+        const resp = await fetch(`http://localhost:3001/job/${jobId}/status`, {
+          headers: walletAddress ? { 'x-wallet-address': walletAddress } : {},
+        });
         if (!resp.ok) return;
         const data = await resp.json();
         if (data.status === 'completed') {
@@ -385,7 +414,9 @@ export default function App() {
       return;
     }
     setQuestLoading(true);
-    fetch(`http://localhost:3001/job/${selectedQuestId}/status`)
+    fetch(`http://localhost:3001/job/${selectedQuestId}/status`, {
+      headers: walletAddress ? { 'x-wallet-address': walletAddress } : {},
+    })
       .then(async resp => {
         if (!resp.ok) throw new Error('Failed to fetch quest');
         const data = await resp.json();
@@ -574,6 +605,53 @@ export default function App() {
           if (window.setJobId) window.setJobId(null);
         }}
       />
+
+      {/* ==== Mission Intake (ask the player what they want) ==== */}
+      {intakeBuilding && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}
+          onClick={() => setIntakeBuilding(null)}
+        >
+          <div
+            style={{ background: '#1e1230', color: '#fff', padding: '24px', borderRadius: '8px', width: '460px', maxWidth: '92%', fontFamily: 'sans-serif' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 style={{ margin: '0 0 4px' }}>{intakeBuilding.name}</h2>
+            <p style={{ margin: '0 0 16px', color: '#b9a7e0', fontSize: 13 }}>
+              Capability: <code>{intakeBuilding.action}</code>
+            </p>
+
+            <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Objective / target</label>
+            <input
+              type="text"
+              value={intakeTarget}
+              onChange={e => setIntakeTarget(e.target.value)}
+              placeholder={intakeBuilding.target}
+              style={{ width: '100%', padding: '8px', fontSize: 14, marginBottom: 12, boxSizing: 'border-box' }}
+            />
+
+            <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>What should be done?</label>
+            <textarea
+              value={intakeDetails}
+              onChange={e => setIntakeDetails(e.target.value)}
+              placeholder={intakeBuilding.details}
+              rows={4}
+              style={{ width: '100%', padding: '8px', fontSize: 14, marginBottom: 16, boxSizing: 'border-box', resize: 'vertical' }}
+            />
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setIntakeBuilding(null)} style={{ padding: '8px 16px' }}>Cancel</button>
+              <button
+                onClick={dispatchMission}
+                disabled={!intakeTarget.trim()}
+                style={{ padding: '8px 16px', background: '#6a4fb0', color: '#fff', border: 'none', borderRadius: 4, cursor: intakeTarget.trim() ? 'pointer' : 'not-allowed' }}
+              >
+                Dispatch Mission
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==== Vault Modal ==== */}
       {vaultOpen && (
