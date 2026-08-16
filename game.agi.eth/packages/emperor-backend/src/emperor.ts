@@ -60,6 +60,37 @@ export function getMission(id: string): MissionRecord | undefined {
   return missions.get(id);
 }
 
+/**
+ * DEV-ONLY mock IPFS publication. Real settlement requires the evidence docket
+ * to be published to IPFS and fetched back with a matching hash before an
+ * unsigned completion tx can be built. Until a real pinning service is wired,
+ * this marks the docket PUBLISHED_IPFS with a mock CID and matching fetchback
+ * hashes so the unsigned-tx path can be exercised end to end. It is explicitly
+ * flagged (`mock: true`) and must only be triggered by an explicit request.
+ */
+export function mockPublishDocketToIpfs(mission: MissionRecord): boolean {
+  const d = mission.docket;
+  if (!d) return false;
+  let report: Record<string, unknown> = {};
+  try {
+    report = JSON.parse(d.validation_report);
+  } catch {
+    report = { raw: d.validation_report };
+  }
+  d.ipfs_cid = `bafkreimock${d.content_hash.slice(0, 46)}`;
+  d.publication_status = 'PUBLISHED_IPFS';
+  report.ipfs_publication = {
+    local_sha256: d.content_hash,
+    fetched_sha256: d.content_hash,
+    matched: true,
+    mock: true,
+  };
+  d.validation_report = JSON.stringify(report);
+  d.updated_at = new Date();
+  touch(mission, 'completed', `Docket mock-published to IPFS (${d.ipfs_cid.slice(0, 16)}…) [DEV MOCK].`);
+  return true;
+}
+
 function touch(m: MissionRecord, stage: string, note: string) {
   m.updatedAt = Date.now();
   m.log.push({ t: m.updatedAt, stage, note });
