@@ -10,17 +10,23 @@ import { getSanitizedHermesConfigSummary } from './agents/hermes/config';
 import { buildCompletionUnsignedTx, getUnsignedTx } from './tx/build';
 import { verifyCompletionOutcome } from './tx/outcome/verify';
 import type { ContractId } from './tx/types';
+import crypto from 'crypto';
+import { ethers } from 'ethers';
 
 // Load environment variables from .env file (game.agi.eth/.env)
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const app = express();
 app.use(express.json());
+// Nonce storage for auth challenge
+const nonces = new Map(); // key: ip, value: { nonce: string, expiry: number }
+const NONCE_EXPIRY_MS = 2 * 60 * 1000; // 2 minutes
+
 
 // Permissive CORS for the local game client (dev)
 app.use((_req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, x-wallet-address');
   res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   if (_req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -196,6 +202,58 @@ app.post('/completion-tx/:id/verify', async (req, res) => {
   res.status(result.ok ? 200 : 409).json(result);
 });
 
+
+// Auth nonce endpoint
+app.get('/auth/nonce', (_req, res) => {
+  const ip = _req.ip || _req.connection.remoteAddress;
+  const nonceBytes = crypto.randomBytes(32);
+  const nonce = `0x${nonceBytes.toString('hex')}`;
+  nonces.set(ip, { nonce, expiry: Date.now() + NONCE_EXPIRY_MS });
+  res.json({ nonce });
+});
+
+app.post('/auth/verify', async (req, res) => {
+  const { address, signature } = req.body as { address: string; signature: string };
+  if (!address || !signature) {
+    return res.status(400).json({ error: 'Missing address or signature' });
+  }
+  const ip = _req.ip || _req.connection.remoteAddress;
+  const stored = nonces.get(ip);
+  if (!stored) {
+    return res.status(400).json({ error: 'No nonce found for this IP (may have expired)' });
+  }
+  if (Date.now() > stored.expiry) {
+    nonces.delete(ip);
+    return res.status(400).json({ error: 'Nonce expired' });
+  }
+  let recovered: string;
+  try {
+    recovered = ethers.verifyMessage(stored.nonce, signature);
+  } catch (e) {
+    return res.status(400).json({ error: 'Invalid signature' });
+  }
+  if (recovered.toLowerCase() !== address.toLowerCase()) {
+    return res.status(401).json({ valid: false });
+  }
+  // Optional: delete nonce to prevent replay
+  nonces.delete(ip);
+  res.json({ valid: true });
+});
+
+// ENS mint placeholder (requires authentication and Mancer holder check)
+app.post('/ens/mint', async (req, res) => {
+  // In a real implementation, you would verify the caller is authenticated
+  // and a Mancer holder before proceeding.
+  // For now, we just return a mock success.
+  const { label } = req.body as { label?: string };
+  if (!label || typeof label !== 'string') {
+    return res.status(400).json({ error: 'Missing label' });
+  }
+  // TODO: interact with ENS Registry/NameWrapper to mint <label>.game.agi.eth
+  // For demo, we pretend success with a fake tx hash.
+  const fakeTxHash = '0x' + crypto.randomBytes(32).toString('hex');
+  res.json({ txHash: fakeTxHash, label, fqdn: `${label}.game.agi.eth` });
+});
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   const ps = protocolStatus();
