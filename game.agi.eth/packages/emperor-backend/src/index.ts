@@ -85,7 +85,8 @@ app.post('/intent', async (req, res) => {
     }
 
     // Emperor accepts the intent and runs the staged mission.
-    const mission = createMission(intent);
+    const userId = req.headers['x-wallet-address'] || req.headers['wallet-address'] || undefined;
+    const mission = createMission(intent, userId);
     console.log(`Intent accepted: ${def.action} -> ${def.capability} (${def.route}) as job ${mission.id}`);
 
     res.status(202).json({
@@ -108,6 +109,10 @@ app.post('/intent', async (req, res) => {
 app.get('/job/:id/status', (req, res) => {
   const mission = getMission(req.params.id);
   if (!mission) return res.status(404).json({ error: 'Job not found' });
+  const requesterUserId = req.headers['x-wallet-address'] || req.headers['wallet-address'] || undefined;
+  if (mission.userId !== undefined && mission.userId !== requesterUserId) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
   res.json({
     jobId: mission.id,
     status: mission.status,

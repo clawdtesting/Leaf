@@ -4,10 +4,11 @@ import ReactDOM from 'react-dom/client';
 import { Game } from 'phaser';
 import { QuestOverlay } from './QuestOverlay';
 import { InteriorScene } from './InteriorScene';
+import { ethers } from 'ethers';
 
-/* --------------------------------------------------------------
-   Constants & building definitions
-   -------------------------------------------------------------- */
+// --------------------------------------------------------------
+// Constants & building definitions
+// --------------------------------------------------------------
 const WORLD_WIDTH = 800;
 const WORLD_HEIGHT = 600;
 const LEAF_FRAME = 64;
@@ -28,14 +29,14 @@ const BUILDINGS: BuildingDef[] = [
   { key: 'cabin', name: "Explorer's Guild", x: 150, y: 200, action: 'ECOSYSTEM_RESEARCH', target: 'Robinhood Chain', details: 'Find 10 projects with demonstrated real utility' },
   { key: 'workshop', name: 'The Forge', x: 350, y: 200, action: 'SMART_CONTRACT_DEVELOPMENT', target: 'Settlement contract', details: 'Build a settlement contract with signed offers and a 1% fee' },
   { key: 'watchtower', name: 'Auditor Tower', x: 550, y: 200, action: 'SMART_CONTRACT_AUDIT', target: 'Vault contract', details: 'Audit the provided contract for security issues' },
-  { key: 'greenhouse', name: 'Nova Garden', x: 700, y: 200, action: 'CAPABILITY_DISCOVERY', target: 'Cross-chain auditing', details: 'Seed a new capability where existing ones fall short' },
+  { key: 'greenhouse', name: 'Nova Garden', x: 700, y: 200, action: 'CAPABILITY_DISCOVERY', target: 'Cross-chain auditing', details: 'Seed a new capability where existing ones fall short' }
 ];
 
-/* --------------------------------------------------------------
-   Decoration placement (no Tiled needed — placed directly in code).
-   `solid: true` means Leaf collides with it. Others are walk-through.
-   x,y is the base of the object (origin bottom-center); depth = y.
-   -------------------------------------------------------------- */
+// --------------------------------------------------------------
+// Decoration placement (no Tiled needed — placed directly in code).
+// `solid: true` means Leaf collides with it. Others are walk-through.
+// x,y is the base of the object (origin bottom-center); depth = y.
+// --------------------------------------------------------------
 interface DecorDef { key: string; x: number; y: number; scale: number; solid?: boolean; }
 
 const DECOR: DecorDef[] = [
@@ -60,9 +61,9 @@ const DECOR: DecorDef[] = [
 
 const DECOR_KEYS = Array.from(new Set(DECOR.map(d => d.key)));
 
-/* --------------------------------------------------------------
-   Outside Scene
-   -------------------------------------------------------------- */
+// --------------------------------------------------------------
+// Outside Scene
+// --------------------------------------------------------------
 const outsideScene = { key: 'outside', preload, create, update };
 
 function preload(this: Phaser.Scene) {
@@ -190,14 +191,86 @@ function update(this: Phaser.Scene) {
   }
 }
 
-/* --------------------------------------------------------------
-   Helper – send intent to backend
-   -------------------------------------------------------------- */
-function sendIntent(b: BuildingDef) {
-  fetch('http://localhost:3001/intent', {
+// --------------------------------------------------------------
+// Wallet & Auth helpers
+// --------------------------------------------------------------
+const MANCER_CONTRACT_ADDRESS = import.meta.env.VITE_MANCER_CONTRACT_ADDRESS; // set in .env
+const MANCER_ABI = [
+  "function balanceOf(address) view returns (uint256)"
+];
+
+async function getProvider() {
+  if (typeof window.ethereum !== 'undefined') {
+    return new ethers.BrowserProvider(window.ethereum);
+  }
+  throw new Error('No Ethereum provider found (install MetaMask or similar)');
+}
+
+/** Fetch a nonce from the backend – you must implement /auth/nonce */
+async function fetchNonce(): Promise<string> {
+  const resp = await fetch('http://localhost:3001/auth/nonce');
+  if (!resp.ok) throw new Error('Unable to fetch nonce');
+  const data = await resp.json();
+  return data.nonce; // expect { nonce: "0x..." }
+}
+
+/** Sign the nonce with the connected wallet */
+async function signMessage(provider: ethers.Provider, address: string, message: string): Promise<string> {
+  const signer = await provider.getSigner();
+  return await signer.signMessage(message);
+}
+
+/** Verify the signature with the backend – you must implement /auth/verify */
+async function verifySignature(address: string, signature: string): Promise<boolean> {
+  const resp = await fetch('http://localhost:3001/auth/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: b.action, target: b.target, details: b.details }),
+    body: JSON.stringify({ address, signature })
+  });
+  if (!resp.ok) return false;
+  const data = await resp.json();
+  return !!data.valid; // expect { valid: true }
+}
+
+/** Check Mancer NFT ownership (read‑only, no wallet needed beyond address) */
+async function isMancerHolder(address: string): Promise<boolean> {
+  try {
+    const provider = await getProvider();
+    const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
+    const bal = await contract.balanceOf(address);
+    return bal.gt(0);
+  } catch (e) {
+    console.warn('Mancer check failed', e);
+    return false; // fail‑closed
+  }
+}
+
+/** Mint an ENS sub‑domain – placeholder that calls a backend endpoint you’ll add */
+async function mintEnsSubdomain(label: string): Promise<{ txHash?: string }> {
+  const resp = await fetch('http://localhost:3001/ens/mint', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label })
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`ENS mint failed: ${err}`);
+  }
+  return await resp.json(); // expect { txHash: "0x..." } or similar
+}
+
+/* --------------------------------------------------------------
+   Helper – send intent to backend (now includes auth header)
+   -------------------------------------------------------------- */
+function sendIntent(b: BuildingDef, userAddress: string | null) {
+  fetch('http://localhost:3001/intent', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // The backend expects this header for per‑user scoping
+      ...(userAddress ? { 'x-wallet-address': userAddress } : {})
+    },
+    body: JSON.stringify({ action: b.action, target: b.target, details: b.details })
   })
     .then(async res => {
       if (res.ok) {
@@ -212,16 +285,48 @@ function sendIntent(b: BuildingDef) {
 }
 
 /* --------------------------------------------------------------
-   React wrapper – creates the Phaser game
+   React wrapper – creates the Phaser game + wallet logic
    -------------------------------------------------------------- */
 export default function App() {
+  // ----- Game state -----
   const [questInProgress, setQuestInProgress] = useState(false);
   const [questCompleted, setQuestCompleted] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [resultData, setResultData] = useState<any>(null);
+  const [completedQuestIds, setCompletedQuestIds] = useState<string[]>([]);
+  const [vaultOpen, setVaultOpen] = useState(false);
+  const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
+  const [questLoading, setQuestLoading] = useState<boolean>(false);
+  const [questData, setQuestData] = useState<any>(null);
+
+  // ----- Wallet / Auth state -----
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [authenticating, setAuthenticating] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [mancerHolder, setMancerHolder] = useState<boolean>(false);
+  const [ensLabel, setEnsLabel] = useState<string>(''); // user‑typed label
+  const [ensSubdomain, setEnsSubdomain] = useState<string | null>(null); // e.g. "alice.game.agi.eth"
+  const [ensMinting, setEnsMinting] = useState(false);
+  const [ensError, setEnsError] = useState<string | null>(null);
+
+  // Persist completed quest IDs across refreshes
+  useEffect(() => {
+    const saved = localStorage.getItem('completedQuestIds');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setCompletedQuestIds(parsed);
+      } catch { /* ignore */ }
+    }
+  }, []);
 
   useEffect(() => {
-    // One interior scene per building (registers Interior-<key>)
+    localStorage.setItem('completedQuestIds', JSON.stringify(completedQuestIds));
+  }, [completedQuestIds]);
+
+  // ----- Phaser game setup -----
+  useEffect(() => {
     const interiors = BUILDINGS.map(
       b => new InteriorScene({ buildingKey: b.key, interiorImg: `${b.key}-inside.png`, title: b.name, leaveLabel: 'Leave (Esc)' })
     );
@@ -243,6 +348,7 @@ export default function App() {
     };
   }, []);
 
+  // ----- Poll quest status -----
   useEffect(() => {
     if (!jobId) return;
     const interval = setInterval(async () => {
@@ -255,6 +361,12 @@ export default function App() {
           setQuestInProgress(false);
           setQuestCompleted(true);
           setResultData(data.result);
+          if (jobId) {
+            setCompletedQuestIds(prev => {
+              if (!prev.includes(jobId)) return [...prev, jobId];
+              return prev;
+            });
+          }
         } else if (data.status === 'failed') {
           clearInterval(interval);
           setQuestInProgress(false);
@@ -267,9 +379,151 @@ export default function App() {
     return () => clearInterval(interval);
   }, [jobId]);
 
+  // ----- Fetch quest details for Vault viewer -----
+  useEffect(() => {
+    if (!selectedQuestId) {
+      setQuestData(null);
+      return;
+    }
+    setQuestLoading(true);
+    fetch(`http://localhost:3001/job/${selectedQuestId}/status`)
+      .then(async resp => {
+        if (!resp.ok) throw new Error('Failed to fetch quest');
+        const data = await resp.json();
+        setQuestData(data);
+      })
+      .catch(err => {
+        console.error('Error fetching quest:', err);
+        setQuestData(null);
+      })
+      .finally(() => setQuestLoading(false));
+  }, [selectedQuestId]);
+
+  // ----- Wallet connection logic -----
+  const connectWallet = async () => {
+    try {
+      setAuthenticating(true);
+      const provider = await getProvider();
+      await window.ethereum?.request({ method: 'eth_requestAccounts' });
+      const signer = await provider.getSigner();
+      const address = await signer.getAddress();
+      setWalletAddress(address);
+      setWalletConnected(true);
+
+      // 1️⃣ Get nonce from backend
+      const nonce = await fetchNonce(); // e.g. "0x123abc..."
+      // 2️⃣ Sign it
+      const signature = await signMessage(provider, address, nonce);
+      // 3️⃣ Verify with backend
+      const valid = await verifySignature(address, signature);
+      if (!valid) throw new Error('Signature verification failed');
+      setAuthenticated(true);
+
+      // 4️⃣ Check Mancer NFT holder status
+      const holder = await isMancerHolder(address);
+      setMancerHolder(holder);
+      if (!holder) {
+        console.warn('Wallet is not a Mancer NFT holder – quests will be gated.');
+      }
+    } catch (err) {
+      console.error('Wallet connection/auth error:', err);
+      setWalletAddress(null);
+      setWalletConnected(false);
+      setAuthenticated(false);
+      setMancerHolder(false);
+      // keep authenticating false so user can retry
+    } finally {
+      setAuthenticating(false);
+    }
+  };
+
+  const disconnectWallet = () => {
+    setWalletAddress(null);
+    setWalletConnected(false);
+    setAuthenticated(false);
+    setMancerHolder(false);
+    // clear any cached quests? optional
+  };
+
+  // ----- ENS minting -----
+  const handleEnsMint = async () => {
+    if (!walletAddress || !authenticated || !mancerHolder) {
+      alert('You must be connected, verified, and a Mancer NFT holder to mint a sub‑domain.');
+      return;
+    }
+    const label = ensLabel.trim();
+    if (!label) {
+      alert('Please enter a sub‑domain label.');
+      return;
+    }
+    setEnsMinting(true);
+    setEnsError(null);
+    try {
+      const result = await mintEnsSubdomain(label);
+      // Assuming backend returns { txHash: "0x..." }
+      const txHash = result.txHash;
+      if (txHash) {
+        setEnsSubdomain(`${label}.game.agi.eth`);
+        // Optionally show a link to ENS explorer or tx receipt
+        console.log('ENS mint tx:', txHash);
+      } else {
+        setEnsError('Unexpected response from ENS mint endpoint.');
+      }
+    } catch (err) {
+      console.error('ENS mint error:', err);
+      setEnsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnsMinting(false);
+    }
+  };
+
+  // ----- Render -----
   return (
-    <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
+    <div style={{ padding: '1rem', fontFamily: 'sans-serif', position: 'relative' }}>
+      {/* ==== Wallet bar (top‑right) ==== */}
+      <div style={{
+        position: 'fixed',
+        top: 8,
+        right: 8,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 4,
+        zIndex: 1000
+      }}>
+        {!walletConnected ? (
+          <button onClick={connectWallet} disabled={authenticating}>
+            {authenticating ? 'Connecting…' : 'Connect Wallet'}
+          </button>
+        ) : (
+          <>
+            <div style={{ fontSize: '14px', color: '#fff' }}>
+              Connected: <code>{walletAddress?.slice(0, 6)}…{walletAddress?.slice(-4)}</code>
+            </div>
+            <div>
+              {authenticated ? (
+                <span style={{ color: '#4caf50' }}>✓ Verified</span>
+              ) : (
+                <span style={{ color: '#f44336' }}>✗ Not verified</span>
+              )}
+              &nbsp;|&nbsp;
+              {mancerHolder ? (
+                <span style={{ color: '#8bc34a' }}>✓ Mancer Holder</span>
+              ) : (
+                <span style={{ color: '#ff9800' }}>⚠ Not a Holder</span>
+              )}
+            </div>
+            <button onClick={disconnectWallet} style={{ fontSize: '12px', padding: '2px 6px' }}>
+              Disconnect
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* ==== Main game canvas ==== */}
       <div id="game-container" style={{ width: '100%', maxWidth: 800, margin: '0 auto' }}></div>
+
+      {/* ==== Quest overlay (existing) ==== */}
       <QuestOverlay
         questInProgress={questInProgress}
         questCompleted={questCompleted}
@@ -283,6 +537,151 @@ export default function App() {
           if (window.setJobId) window.setJobId(null);
         }}
       />
+
+      {/* ==== Vault Modal ==== */}
+      {vaultOpen && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }} onClick={() => {
+          setVaultOpen(false);
+          setSelectedQuestId(null);
+          setQuestData(null);
+        }}>
+          <div style={{
+            background: '#1e1230',
+            color: '#fff',
+            padding: '24px',
+            borderRadius: '8px',
+            width: '420px',
+            maxWidth: '90%',
+            maxHeight: '85vh',
+            overflowY: 'auto'
+          }} onClick={e => e.stopPropagation()}>
+            {!selectedQuestId ? (
+              <>
+                <h2>Completed Quests</h2>
+                {completedQuestIds.length === 0 ? (
+                  <p>No completed quests yet.</p>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {completedQuestIds.map(id => (
+                      <li key={id} style={{ padding: '8px 0', borderBottom: '1px solid #333' }}>
+                        <button onClick={() => {
+                          setSelectedQuestId(id);
+                        }} style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#fff',
+                          textAlign: 'left',
+                          width: '100%',
+                          cursor: 'pointer'
+                        }}>
+                          Quest {id}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button onClick={() => setVaultOpen(false)} style={{ marginTop: '16px', padding: '8px 16px' }}>
+                  Close
+                </button>
+              </>
+            ) : (
+              <>
+                <h2>Quest {selectedQuestId}</h2>
+                {questLoading ? (
+                  <p>Loading…</p>
+                ) : questData ? (
+                  <>
+                    <h3>Status: {questData.status}</h3>
+                    {questData.docket && (
+                      <>
+                        <h4>Docket (IPFS CID: {questData.docket.ipfs_cid})</h4>
+                        <pre style={{
+                          background: '#000',
+                          padding: '12px',
+                          overflow: 'auto',
+                          maxHeight: '220px'
+                        }}>{JSON.stringify(questData.docket, null, 2)}</pre>
+                        {questData.docket.ipfs_cid && (
+                          <div style={{ marginTop: '12px' }}>
+                            <a
+                              href={`https://gateway.pinata.cloud/ipfs/${questData.docket.ipfs_cid}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: '#4fc3f7' }}
+                            >
+                              View Proof on IPFS
+                            </a>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {/* ENS claim section – only show if user is verified & holder */}
+                    {authenticated && mancerHolder && (
+                      <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #444' }}>
+                        <h4>Claim your ENS sub‑domain</h4>
+                        <p>
+                          You own a Mancer NFT, so you can mint a sub‑domain of
+                          <code>game.agi.eth</code> (e.g. <code>myname.game.agi.eth</code>).
+                        </p>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
+                          <input
+                            type="text"
+                            value={ensLabel}
+                            onChange={e => setEnsLabel(e.target.value)}
+                            placeholder="yourlabel"
+                            style={{ flex: 1, padding: '6px', fontSize: '14px' }}
+                            disabled={ensMinting}
+                          />
+                          <button
+                            onClick={handleEnsMint}
+                            disabled={!ensLabel.trim() || ensMinting}
+                            style={{ padding: '6px 12px', fontSize: '14px', cursor: ensMinting ? 'not-allowed' : 'pointer' }}
+                          >
+                            {ensMinting ? 'Minting…' : 'Claim'}
+                          </button>
+                        </div>
+                        {ensSubdomain && (
+                          <div style={{ marginTop: '12px' }}>
+                            <p>Your sub‑domain:</p>
+                            <code style={{ color: '#81c784' }}>{ensSubdomain}</code>
+                            <p style={{ fontSize: '12px', color: '#aaa' }}>
+                              (You can now set this as your ENS resolver or avatar, etc.)
+                            </p>
+                          </div>
+                        )}
+                        {ensError && (
+                          <div style={{ marginTop: '12px', color: '#f44336' }}>
+                            Error: {ensError}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSelectedQuestId(null);
+                        setQuestData(null);
+                      }}
+                      style={{ marginTop: '16px', padding: '8px 16px' }}
+                    >
+                      Back to List
+                    </button>
+                  </>
+                ) : (
+                  <p>No data.</p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

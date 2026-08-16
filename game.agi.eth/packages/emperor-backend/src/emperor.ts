@@ -15,6 +15,7 @@ import { readNextJobId } from './protocol/read';
 import { publishAndVerify, type PublishResult } from './ipfs/pin';
 import { hermesEnabled, runViaHermes } from './agents/hermes/executor';
 import { getHermesConfig } from './agents/hermes/config';
+import { MissionPersistence } from './persistence';
 
 export interface EvidenceItem {
   type: string;
@@ -39,6 +40,7 @@ export interface Intent {
 export interface MissionRecord {
   id: string;
   intent: Intent;
+  userId?: string; // wallet address or identity
   capability: string;
   building: string;
   route: ActionDef['route'];
@@ -56,11 +58,11 @@ export interface MissionRecord {
   updatedAt: number;
 }
 
-const missions = new Map<string, MissionRecord>();
+const missions = new MissionPersistence();
 let counter = 1;
 
 export function getMission(id: string): MissionRecord | undefined {
-  return missions.get(id);
+  return missions.getMission(id);
 }
 
 /**
@@ -104,8 +106,10 @@ export async function publishDocketToIpfs(mission: MissionRecord): Promise<Publi
     d.validation_report = JSON.stringify(report);
     d.updated_at = new Date();
     touch(mission, 'completed', `Docket published to IPFS (${result.cid.slice(0, 16)}…), fetchback verified.`);
+    missions.updateMission(mission);
   } else {
-    touch(mission, 'completed', `IPFS publish did not complete: ${result.error ?? result.mode}.`);
+    touch(mission, 'completed', `IPFS publish did not complete: ${result.error ?? result.mode}`);
+    missions.updateMission(mission);
   }
   return result;
 }
@@ -138,6 +142,7 @@ export function mockPublishDocketToIpfs(mission: MissionRecord): boolean {
   d.validation_report = JSON.stringify(report);
   d.updated_at = new Date();
   touch(mission, 'completed', `Docket mock-published to IPFS (${d.ipfs_cid.slice(0, 16)}…) [DEV MOCK].`);
+  missions.updateMission(mission);
   return true;
 }
 
@@ -150,7 +155,7 @@ function touch(m: MissionRecord, stage: string, note: string) {
  * Accept a validated intent, create a mission record, and kick off the staged
  * pipeline. Returns the record immediately (status 'accepted').
  */
-export function createMission(intent: Intent): MissionRecord {
+export function createMission(intent: Intent, userId?: string): MissionRecord {
   const def = getAction(intent.action);
   if (!def) throw new Error(`Unknown action: ${intent.action}`);
 
@@ -159,6 +164,7 @@ export function createMission(intent: Intent): MissionRecord {
   const m: MissionRecord = {
     id,
     intent,
+    userId,
     capability: def.capability,
     building: def.building,
     route: def.route,
@@ -170,8 +176,8 @@ export function createMission(intent: Intent): MissionRecord {
     createdAt: now,
     updatedAt: now,
   };
-  missions.set(id, m);
-  touch(m, 'accepted', `Emperor accepted intent for ${def.capability} (${def.route}).`);
+  missions.addMission(m);
+  touch(m, 'accepted', `Emperor accepted intent for ${def.capability} (${def.route})`);
   runPipeline(m, def);
   return m;
 }
@@ -184,13 +190,13 @@ function runPipeline(m: MissionRecord, def: ActionDef) {
   setTimeout(() => {
     m.status = 'planning';
     m.plan = buildPlan(def, m.intent);
-    touch(m, 'planning', `Decomposed objective into ${m.plan.length} steps via ${def.route}.`);
+    touch(m, 'planning', `Decomposed objective into ${m.plan.length} steps via ${def.route}`);
 
     // 2) Execution (produces action-specific result + evidence)
     setTimeout(async () => {
       m.status = 'executing';
       if (hermesEnabled()) {
-        touch(m, 'executing', `Executing ${def.capability} via Hermes (${getHermesConfig().mode}).`);
+        touch(m, 'executing', `Executing ${def.capability} via Hermes (${getHermesConfig().mode})`);
         try {
           const h = await runViaHermes(m.id, def, m.intent);
           m.result = h.result;
@@ -198,12 +204,12 @@ function runPipeline(m: MissionRecord, def: ActionDef) {
           m.cost = h.cost;
           touch(m, 'executing', `Hermes ${h.status}: ${h.evidence.length} evidence item(s) produced.`);
         } catch (e) {
-          touch(m, 'executing', `Hermes error: ${(e as Error).message}.`);
+          touch(m, 'executing', `Hermes error: ${(e as Error).message}`);
           m.result = { message: 'Hermes execution error', error: (e as Error).message };
           m.evidence = [];
         }
       } else {
-        touch(m, 'executing', `Executing ${def.capability} work (simulated).`);
+        touch(m, 'executing', `Executing ${def.capability} work (simulated)`);
         const { result, evidence, cost } = runExecutor(def, m.intent);
         m.result = result;
         m.evidence = evidence;
@@ -217,9 +223,9 @@ function runPipeline(m: MissionRecord, def: ActionDef) {
           const probe = await readNextJobId();
           if (probe.available) {
             m.evidence.push({ type: 'onchain-read', ref: `nextJobId=${probe.nextJobId}`, summary: 'Live AGIJobManager read succeeded' });
-            touch(m, 'executing', `On-chain read: nextJobId=${probe.nextJobId}.`);
+            touch(m, 'executing', `On-chain read: nextJobId=${probe.nextJobId}`);
           } else {
-            touch(m, 'executing', `On-chain read unavailable (${probe.reason}); continuing with simulation.`);
+            touch(m, 'executing', `On-chain read unavailable: ${probe.reason}; continuing with simulation`);
           }
         } catch {
           /* ignore — reads are best-effort */
@@ -230,17 +236,30 @@ function runPipeline(m: MissionRecord, def: ActionDef) {
       setTimeout(() => {
         m.status = 'validating';
         m.validation = validate(def, m.evidence);
-        touch(m, 'validating', `Independent validation: ${m.validation.verdict}.`);
+        touch(m, 'validating', `Independent validation: ${m.validation.verdict}`);
 
         // 4) Acceptance / completion
-        setTimeout(() => {
+        setTimeout(async () => {
           if (m.validation && m.validation.verdict === 'PASS') {
             m.docket = buildDocket(m);
+            // Publish to IPFS
+            const publishResult = await publishDocketToIpfs(m);
+            if (publishResult.ok && publishResult.cid) {
+              // docket already updated inside publishDocketToIpfs
+              touch(m, 'completed', `Evidence accepted; docket published to IPFS ${publishResult.cid.slice(0,12)}…`);
+              missions.updateMission(m);
+            } else {
+              // Publish failed; we still mark completed but with FAILED status?
+              m.docket.publication_status = 'FAILED';
+              touch(m, 'completed', `Evidence accepted; IPFS publish failed: ${publishResult.error ?? publishResult.mode}`);
+              missions.updateMission(m);
+            }
             m.status = 'completed';
-            touch(m, 'completed', `Evidence accepted; docket ${m.docket.content_hash.slice(0, 12)}… sealed.`);
+            missions.updateMission(m);
           } else {
             m.status = 'failed';
             touch(m, 'failed', 'Validation failed; result not accepted.');
+            missions.updateMission(m);
           }
         }, 1200);
       }, 1800);
