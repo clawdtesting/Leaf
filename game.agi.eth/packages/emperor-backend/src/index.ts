@@ -1,10 +1,10 @@
 import express from 'express';
 import * as dotenv from 'dotenv';
-import { ethers } from 'ethers';
 import { z } from 'zod';
 import path from 'path';
 import { ACTIONS, getAction, listActions } from './capabilities';
 import { createMission, getMission } from './emperor';
+import { protocolStatus, readNextJobId, readJobSnapshot } from './protocol/read';
 
 // Load environment variables from .env file (game.agi.eth/.env)
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -28,26 +28,10 @@ const IntentSchema = z.object({
   details: z.string(),
 });
 
-/* ------------------------------------------------------------------ */
-/* Optional on-chain wiring (AGIJobManager). Runs fine without a key.  */
-/* ------------------------------------------------------------------ */
-const agiJobManagerAbi = [
-  'function createJob(string calldata jobSpecURI, uint256 payout, uint32 duration, string calldata details) returns (uint256 jobId)',
-];
-const contractAddress = process.env.AGI_JOB_MANAGER_ADDRESS || '0xB3AAeb69b630f0299791679c063d68d6687481d1';
-const privateKey = process.env.EMPEROR_PRIVATE_KEY;
-let agiJobManager: ethers.Contract | null = null;
-if (privateKey) {
-  try {
-    const provider = new ethers.JsonRpcProvider(process.env.ETH_RPC_URL || 'https://eth-mainnet.g.alchemy.com/v2/rDjRRnJwDPdErIRoNgU_9');
-    const wallet = new ethers.Wallet(privateKey, provider);
-    agiJobManager = new ethers.Contract(contractAddress, agiJobManagerAbi, wallet);
-  } catch (e) {
-    console.warn('Wallet/contract init failed; continuing without on-chain settlement.', (e as Error).message);
-  }
-} else {
-  console.warn('EMPEROR_PRIVATE_KEY not set — running without on-chain settlement (simulation only).');
-}
+// SAFETY MODEL: this backend never holds a signing key and never broadcasts
+// transactions. AGIJobManager work is read-only here; settlement will go
+// through separately-produced, safety-gated UNSIGNED tx packages (next slice),
+// verified read-only after an external signer submits. See Eth-Agi reuse brief §6.
 
 /* ------------------------------------------------------------------ */
 /* Routes                                                              */
@@ -56,6 +40,27 @@ if (privateKey) {
 // Capability discovery — what each building can do.
 app.get('/capabilities', (_req, res) => {
   res.json({ capabilities: listActions() });
+});
+
+// Protocol read status (is the on-chain read path available?).
+app.get('/protocol/status', (_req, res) => {
+  res.json(protocolStatus());
+});
+
+// Cheap read liveness probe against AGIJobManager.
+app.get('/protocol/next-job-id', async (_req, res) => {
+  res.json(await readNextJobId());
+});
+
+// Read a single upstream job snapshot from AGIJobManager.
+app.get('/protocol/job/:id', async (req, res) => {
+  let jobId: bigint;
+  try {
+    jobId = BigInt(req.params.id);
+  } catch {
+    return res.status(400).json({ error: 'Invalid job id' });
+  }
+  res.json(await readJobSnapshot(jobId));
 });
 
 // Structured intent intake (the policy boundary).
@@ -72,17 +77,6 @@ app.post('/intent', async (req, res) => {
         action: intent.action,
         allowed: Object.keys(ACTIONS),
       });
-    }
-
-    // Optional: record the job on-chain when the route settles externally.
-    if (agiJobManager && def.route === 'AGIJOBMANAGER') {
-      try {
-        const tx = await agiJobManager.createJob(`urn:intent:${def.action}`, 0, 3600, JSON.stringify(intent));
-        const receipt = await tx.wait();
-        console.log('AGIJobManager job created on-chain:', receipt?.hash);
-      } catch (contractError) {
-        console.warn('On-chain createJob failed; continuing with simulated settlement:', (contractError as Error).message);
-      }
     }
 
     // Emperor accepts the intent and runs the staged mission.
@@ -105,7 +99,7 @@ app.post('/intent', async (req, res) => {
   }
 });
 
-// Mission status + proof record (evidence, validation, plan, log).
+// Mission status + proof record (evidence, validation, docket, plan, log).
 app.get('/job/:id/status', (req, res) => {
   const mission = getMission(req.params.id);
   if (!mission) return res.status(404).json({ error: 'Job not found' });
@@ -118,6 +112,7 @@ app.get('/job/:id/status', (req, res) => {
     plan: mission.plan,
     evidence: mission.evidence,
     validation: mission.validation,
+    docket: mission.docket,
     result: mission.result,
     cost: mission.cost,
     log: mission.log,
@@ -126,5 +121,7 @@ app.get('/job/:id/status', (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
+  const ps = protocolStatus();
   console.log(`Emperor backend listening on port ${PORT}`);
+  console.log(`Protocol read path: ${ps.readOnlyAvailable ? `available (chain ${ps.chainId})` : 'unavailable (set ETH_RPC_URL to enable on-chain reads)'}`);
 });
