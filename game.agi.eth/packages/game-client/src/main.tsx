@@ -1,18 +1,18 @@
 // packages/game-client/src/main.tsx
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Game, Types } from 'phaser';
+import { Game } from 'phaser';
 import { QuestOverlay } from './QuestOverlay';
 import { InteriorScene } from './InteriorScene';
 
 /* --------------------------------------------------------------
-   1️⃣  Constants & building definitions (unchanged)
+   Constants & building definitions
    -------------------------------------------------------------- */
 const WORLD_WIDTH = 800;
 const WORLD_HEIGHT = 600;
 const LEAF_FRAME = 64;
 const LEAF_SPEED = 150;
-const ENTER_RADIUS = 70; // distance at which the SPACE prompt appears
+const ENTER_RADIUS = 80; // distance at which the SPACE prompt appears
 
 interface BuildingDef {
   key: string;
@@ -25,254 +25,173 @@ interface BuildingDef {
 }
 
 const BUILDINGS: BuildingDef[] = [
-  {
-    key: 'cabin',
-    name: "Explorer's Guild",
-    x: 150,
-    y: 210,
-    action: 'ECOSYSTEM_RESEARCH',
-    target: 'Robinhood Chain',
-    details: 'Find 10 projects with demonstrated real utility',
-  },
-  {
-    key: 'workshop',
-    name: 'The Forge',
-    x: 350,
-    y: 210,
-    action: 'BUILD_AGENT',
-    target: 'AGI Alpha Agent',
-    details: 'Forge a new agent from a job spec',
-  },
-  {
-    key: 'watchtower',
-    name: 'Auditor Tower',
-    x: 550,
-    y: 210,
-    action: 'AUDIT',
-    target: 'Active Jobs',
-    details: 'Audit and validate recently completed jobs',
-  },
-  {
-    key: 'greenhouse',
-    name: 'Nova Garden',
-    x: 700,
-    y: 210,
-    action: 'CULTIVATE',
-    target: 'Ecosystem',
-    details: 'Nurture and stake into promising projects',
-  },
+  { key: 'cabin', name: "Explorer's Guild", x: 150, y: 200, action: 'ECOSYSTEM_RESEARCH', target: 'Robinhood Chain', details: 'Find 10 projects with demonstrated real utility' },
+  { key: 'workshop', name: 'The Forge', x: 350, y: 200, action: 'BUILD_AGENT', target: 'AGI Alpha Agent', details: 'Forge a new agent from a job spec' },
+  { key: 'watchtower', name: 'Auditor Tower', x: 550, y: 200, action: 'AUDIT', target: 'Active Jobs', details: 'Audit and validate recently completed jobs' },
+  { key: 'greenhouse', name: 'Nova Garden', x: 700, y: 200, action: 'CULTIVATE', target: 'Ecosystem', details: 'Nurture and stake into promising projects' },
 ];
 
 /* --------------------------------------------------------------
-   2️⃣  Outside Scene – loads the tilemap & renders layers
+   Decoration placement (no Tiled needed — placed directly in code).
+   `solid: true` means Leaf collides with it. Others are walk-through.
+   x,y is the base of the object (origin bottom-center); depth = y.
    -------------------------------------------------------------- */
-const outsideScene: Types.Core.SceneConfig = {
-  key: 'outside',
-  preload,
-  create,
-  update,
-};
+interface DecorDef { key: string; x: number; y: number; scale: number; solid?: boolean; }
+
+const DECOR: DecorDef[] = [
+  { key: 'big_tree', x: 70, y: 140, scale: 0.55, solid: true },
+  { key: 'big_tree', x: 745, y: 400, scale: 0.55, solid: true },
+  { key: 'small_tree', x: 60, y: 340, scale: 0.5 },
+  { key: 'small_tree', x: 765, y: 140, scale: 0.45 },
+  { key: 'small_tree', x: 300, y: 545, scale: 0.4 },
+  { key: 'bushe', x: 210, y: 430, scale: 0.35 },
+  { key: 'bushe', x: 620, y: 520, scale: 0.35 },
+  { key: 'bushe', x: 470, y: 390, scale: 0.3 },
+  { key: 'stones', x: 120, y: 545, scale: 0.4, solid: true },
+  { key: 'stones', x: 700, y: 250, scale: 0.35, solid: true },
+  { key: 'pond', x: 640, y: 470, scale: 0.6, solid: true },
+  { key: 'log', x: 250, y: 320, scale: 0.4 },
+  { key: 'log_2', x: 560, y: 315, scale: 0.35 },
+  { key: 'flowers', x: 360, y: 450, scale: 0.3 },
+  { key: 'flowers', x: 150, y: 300, scale: 0.25 },
+  { key: 'shroom', x: 445, y: 520, scale: 0.3 },
+  { key: 'fence', x: 400, y: 575, scale: 0.5 },
+];
+
+const DECOR_KEYS = Array.from(new Set(DECOR.map(d => d.key)));
 
 /* --------------------------------------------------------------
-   3️⃣  Preload – tileset, tilemap, leaf, building sprites
+   Outside Scene
    -------------------------------------------------------------- */
-function preload(this: Phaser.Scene) {
-  // Existing loose assets (keep if you still want them)
-  this.load.image('grass', '/assets/grass.png');
-  BUILDINGS.forEach(b => this.load.image(b.key, `/assets/${b.key}.png`));
-  this.load.spritesheet('leaf', '/assets/leaf.png', {
-    frameWidth: LEAF_FRAME,
-    frameHeight: LEAF_FRAME,
-  });
+const outsideScene = { key: 'outside', preload, create, update };
 
-  // ----- NEW: tileset + tilemap -----
-  // Adjust if you stored the tileset elsewhere
-  this.load.image('world_tileset', '/assets/tilesets/world_tileset.png');
-  // The map lives in the public folder and is served at /world.json
-  this.load.tilemapTiledJSON('worldmap', '/world.json');
+function preload(this: Phaser.Scene) {
+  this.load.image('grassfloor', '/assets/grass2.png');
+  BUILDINGS.forEach(b => this.load.image(b.key, `/assets/${b.key}.png`));
+  DECOR_KEYS.forEach(k => this.load.image(k, `/assets/${k}.png`));
+  this.load.spritesheet('leaf', '/assets/leaf.png', { frameWidth: LEAF_FRAME, frameHeight: LEAF_FRAME });
 }
 
-/* --------------------------------------------------------------
-   4️⃣  Create – build the map, add collisions, keep building sprites
-   -------------------------------------------------------------- */
 function create(this: Phaser.Scene) {
   const scene = this as any;
+  this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // ----- 4.1 Tilemap -----
-  const map: Types.Tilemap.Tilemap = this.make.tilemap({ key: 'worldmap' });
-  const tileset: Types.Tilemap.Tileset = map.addTilesetImage(
-    'world_tileset',
-    'world_tileset'
-  );
+  // Repeating grass floor
+  this.add.tileSprite(0, 0, WORLD_WIDTH, WORLD_HEIGHT, 'grassfloor').setOrigin(0, 0).setDepth(0);
 
-  // Visual layers (order matters – later layers draw on top)
-  const groundLayer = map.createLayer('Ground', tileset, 0, 0);
-  const decoLayer = map.createLayer('Decoration', tileset, 0, 0);
-  const elevLayer = map.createLayer('Elevation', tileset, 0, 0);
-  const entrLayer = map.createLayer('Entrances', tileset, 0, 0);
+  // Solid decorations Leaf can't walk through
+  const solids = this.physics.add.staticGroup();
 
-  // ----- 4.2 Collision from the "Collisions" object layer -----
-  const collObjects = map.getObjectLayer('Collisions')?.objects ?? [];
-  collObjects.forEach((obj: any) => {
-    // Phaser expects the rectangle’s centre point
-    const rect = this.physics.add.staticRectangle(
-      obj.x + obj.width / 2,
-      obj.y + obj.height / 2,
-      obj.width,
-      obj.height
-    );
-    // Make the leaf collide with this static body
-    this.physics.add.collider((scene as any).leaf, rect);
+  // Decorations
+  DECOR.forEach(d => {
+    if (d.solid) {
+      const s = solids.create(d.x, d.y, d.key) as Phaser.Physics.Arcade.Sprite;
+      s.setOrigin(0.5, 1).setScale(d.scale).refreshBody();
+      s.setDepth(d.y);
+    } else {
+      this.add.image(d.x, d.y, d.key).setOrigin(0.5, 1).setScale(d.scale).setDepth(d.y);
+    }
   });
 
-  // ----- 4.3 Building sprites (quest triggers) -----
+  // Building sprites (quest triggers)
   const buildingGroup = this.physics.add.staticGroup();
-  const buildingSprites: {
-    def: BuildingDef;
-    sprite: Phaser.GameObjects.Image;
-  }[] = [];
-
+  const buildingSprites: { def: BuildingDef; sprite: Phaser.GameObjects.Image }[] = [];
   BUILDINGS.forEach(b => {
     const sprite = buildingGroup.create(b.x, b.y, b.key) as Phaser.Physics.Arcade.Sprite;
-    sprite.setScale(0.55).refreshBody();
+    sprite.setOrigin(0.5, 1).setScale(0.55).refreshBody();
+    sprite.setDepth(b.y);
     sprite.setInteractive({ useHandCursor: true });
-    sprite.on('pointerdown', () => sendIntent(b));
-
-    // Building name label (unchanged styling)
-    this.add.text(
-      b.x,
-      b.y - sprite.displayHeight / 2 - 10,
-      b.name,
-      {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#ffffff',
-        backgroundColor: '#00000080',
-        padding: { x: 4, y: 2 },
-      }
-    ).setOrigin(0.5);
-
+    sprite.on('pointerdown', () => enterBuilding(scene, b));
+    this.add.text(b.x, b.y - sprite.displayHeight - 6, b.name, {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ffffff',
+      backgroundColor: '#00000080', padding: { x: 4, y: 2 },
+    }).setOrigin(0.5).setDepth(10000);
     buildingSprites.push({ def: b, sprite });
   });
   scene.buildingSprites = buildingSprites;
 
-  // ----- 4.4 Leaf (player) -----
-  const leaf = this.physics.add.sprite(WORLD_WIDTH / 2, 460, 'leaf');
+  // Leaf (player)
+  const leaf = this.physics.add.sprite(WORLD_WIDTH / 2, 470, 'leaf');
   leaf.setCollideWorldBounds(true);
   const leafBody = leaf.body as Phaser.Physics.Arcade.Body;
   leafBody.setSize(LEAF_FRAME * 0.4, LEAF_FRAME * 0.35);
   leafBody.setOffset(LEAF_FRAME * 0.3, LEAF_FRAME * 0.55);
   scene.leaf = leaf;
 
-  // Ensure leaf also collides with the building sprites (so they block each other)
   this.physics.add.collider(leaf, buildingGroup);
+  this.physics.add.collider(leaf, solids);
 
-  // ----- 4.5 Animations -----
+  // Walk animations (3x4 sheet)
   const mk = (key: string, start: number, end: number) =>
-    this.anims.create({
-      key,
-      frames: this.anims.generateFrameNumbers('leaf', { start, end }),
-      frameRate: 6,
-      repeat: -1,
-    });
+    this.anims.create({ key, frames: this.anims.generateFrameNumbers('leaf', { start, end }), frameRate: 6, repeat: -1 });
   mk('walk-down', 0, 2);
   mk('walk-up', 3, 5);
   mk('walk-left', 6, 8);
   mk('walk-right', 9, 11);
-  leaf.setFrame(1); // idle facing down
+  leaf.setFrame(1);
   scene.lastDir = 'down';
 
-  // ----- 4.6 Input -----
+  // Input
   const keyboard = this.input.keyboard!;
   scene.cursors = keyboard.createCursorKeys();
-  scene.spaceKey = keyboard.addKey(
-    Phaser.Input.Keyboard.KeyCodes.SPACE
-  );
+  scene.spaceKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-  // ----- 4.7 Proximity prompt -----
-  scene.prompt = this.add
-    .text(WORLD_WIDTH / 2, WORLD_HEIGHT - 24, '', {
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#ffff88',
-      backgroundColor: '#000000aa',
-      padding: { x: 6, y: 3 },
-    })
-    .setOrigin(0.5)
-    .setDepth(100);
+  // Proximity prompt
+  scene.prompt = this.add.text(WORLD_WIDTH / 2, WORLD_HEIGHT - 20, '', {
+    fontFamily: 'monospace', fontSize: '14px', color: '#ffff88',
+    backgroundColor: '#000000aa', padding: { x: 6, y: 3 },
+  }).setOrigin(0.5).setDepth(100000).setScrollFactor(0);
+
+  // Resume cleanly when returning from an interior
+  this.events.on(Phaser.Scenes.Events.RESUME, () => scene.leaf?.setVelocity(0, 0));
 }
 
-/* --------------------------------------------------------------
-   5️⃣  Update – movement, animation, SPACE to enter building
-   -------------------------------------------------------------- */
+function enterBuilding(scene: any, b: BuildingDef) {
+  sendIntent(b);
+  scene.scene.pause('outside');
+  scene.scene.launch(`Interior-${b.key}`);
+}
+
 function update(this: Phaser.Scene) {
   const scene = this as any;
   const leaf = scene.leaf as Phaser.Physics.Arcade.Sprite;
   if (!leaf) return;
-
   const cursors = scene.cursors as Phaser.Types.Input.Keyboard.CursorKeys;
 
-  // ---- Movement ----
-  let vx = 0;
-  let vy = 0;
+  let vx = 0, vy = 0;
   if (cursors.left?.isDown) vx = -LEAF_SPEED;
   else if (cursors.right?.isDown) vx = LEAF_SPEED;
   if (cursors.up?.isDown) vy = -LEAF_SPEED;
   else if (cursors.down?.isDown) vy = LEAF_SPEED;
   leaf.setVelocity(vx, vy);
+  leaf.setDepth(leaf.y); // sort against decorations
 
-  // ---- Animation ----
   if (vx !== 0 || vy !== 0) {
-    if (Math.abs(vx) > Math.abs(vy)) {
-      scene.lastDir = vx < 0 ? 'left' : 'right';
-    } else {
-      scene.lastDir = vy < 0 ? 'up' : 'down';
-    }
+    if (Math.abs(vx) > Math.abs(vy)) scene.lastDir = vx < 0 ? 'left' : 'right';
+    else scene.lastDir = vy < 0 ? 'up' : 'down';
     leaf.anims.play(`walk-${scene.lastDir}`, true);
   } else {
     leaf.anims.stop();
-    const idleFrame: Record<string, number> = {
-      down: 1,
-      up: 4,
-      left: 7,
-      right: 10,
-    };
-    leaf.setFrame(idleFrame[scene.lastDir] ?? 1);
+    const idle: Record<string, number> = { down: 1, up: 4, left: 7, right: 10 };
+    leaf.setFrame(idle[scene.lastDir] ?? 1);
   }
 
-  // ---- Proximity prompt & SPACE to enter ----
   let near: BuildingDef | null = null;
-  let nearestDist = ENTER_RADIUS;
+  let best = ENTER_RADIUS;
   for (const { def } of scene.buildingSprites) {
-    const d = Phaser.Math.Distance.Between(
-      leaf.x,
-      leaf.y,
-      def.x,
-      def.y
-    );
-    if (d < nearestDist) {
-      nearestDist = d;
-      near = def;
-    }
+    const d = Phaser.Math.Distance.Between(leaf.x, leaf.y, def.x, def.y);
+    if (d < best) { best = d; near = def; }
   }
-
   if (near) {
     scene.prompt.setText(`Press SPACE to enter ${near.name}`);
-    if (Phaser.Input.Keyboard.JustDown(scene.spaceKey)) {
-      // Optional: still log a quest to the backend
-      sendIntent(near);
-
-      // Pause the outside map and launch the interior scene
-      scene.scene.pause('outside');
-      scene.scene.launch(`Interior-${near.key}`);
-    }
+    if (Phaser.Input.Keyboard.JustDown(scene.spaceKey)) enterBuilding(scene, near);
   } else {
     scene.prompt.setText('');
   }
 }
 
 /* --------------------------------------------------------------
-   6️⃣  Helper – send intent to backend (unchanged)
+   Helper – send intent to backend
    -------------------------------------------------------------- */
 function sendIntent(b: BuildingDef) {
   fetch('http://localhost:3001/intent', {
@@ -283,7 +202,6 @@ function sendIntent(b: BuildingDef) {
     .then(async res => {
       if (res.ok) {
         const data = await res.json();
-        console.log('Intent sent successfully', data);
         if (window.setQuestInProgress) window.setQuestInProgress(true);
         if (window.setJobId && data.jobId) window.setJobId(data.jobId);
       } else {
@@ -294,7 +212,7 @@ function sendIntent(b: BuildingDef) {
 }
 
 /* --------------------------------------------------------------
-   7️⃣  React wrapper – creates the Phaser game
+   React wrapper – creates the Phaser game
    -------------------------------------------------------------- */
 export default function App() {
   const [questInProgress, setQuestInProgress] = useState(false);
@@ -303,8 +221,19 @@ export default function App() {
   const [resultData, setResultData] = useState<any>(null);
 
   useEffect(() => {
-    const game = new Game({ scene: [outsideScene] });
-    // Expose setters to the Phaser scene via window (as before)
+    // One interior scene per building (registers Interior-<key>)
+    const interiors = BUILDINGS.map(
+      b => new InteriorScene({ buildingKey: b.key, interiorImg: `${b.key}-inside.png`, leaveLabel: 'Leave' })
+    );
+    const game = new Game({
+      type: Phaser.AUTO,
+      parent: 'game-container',
+      backgroundColor: '#1e1230',
+      pixelArt: true,
+      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: WORLD_WIDTH, height: WORLD_HEIGHT },
+      physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: false } },
+      scene: [outsideScene, ...interiors],
+    });
     window.setQuestInProgress = setQuestInProgress;
     window.setJobId = setJobId;
     return () => {
@@ -314,7 +243,6 @@ export default function App() {
     };
   }, []);
 
-  // Poll job status (unchanged)
   useEffect(() => {
     if (!jobId) return;
     const interval = setInterval(async () => {
@@ -341,10 +269,7 @@ export default function App() {
 
   return (
     <div style={{ padding: '1rem', fontFamily: 'sans-serif' }}>
-      <div
-        id="game-container"
-        style={{ width: '100%', maxWidth: 800, margin: '0 auto' }}
-      ></div>
+      <div id="game-container" style={{ width: '100%', maxWidth: 800, margin: '0 auto' }}></div>
       <QuestOverlay
         questInProgress={questInProgress}
         questCompleted={questCompleted}
@@ -362,9 +287,6 @@ export default function App() {
   );
 }
 
-/* --------------------------------------------------------------
-   8️⃣  Mount the React app
-   -------------------------------------------------------------- */
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <App />

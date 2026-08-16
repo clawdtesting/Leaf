@@ -35,6 +35,12 @@ export class InteriorScene extends Scene {
   create() {
     const { width, height } = this.scale;
 
+    // Opaque background so the paused outside scene doesn't show through
+    this.cameras.main.setBackgroundColor('#140d07');
+
+    // ESC also leaves the interior
+    this.input.keyboard?.once('keydown-ESC', () => this.leave());
+
     // Show the interior image, centered
     this.interior = this.add.image(width / 2, height / 2, this.props.interiorImg);
     // Scale to fit screen while preserving aspect ratio (adjust as needed)
@@ -50,14 +56,15 @@ export class InteriorScene extends Scene {
         color: '#ff0',
         backgroundColor: '#0005',
         padding: { x: 12, y: 6 },
-        borderRadius: 4,
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => {
-        // Stop this interior scene and resume the outside scene (key "outside")
-        this.scene.stop();
-        this.scene.resume('outside');
-      });
+      .on('pointerdown', () => this.leave());
+  }
+
+  private leave() {
+    // Stop this interior scene and resume the outside scene (key "outside")
+    this.scene.stop();
+    this.scene.resume('outside');
   }
 }
