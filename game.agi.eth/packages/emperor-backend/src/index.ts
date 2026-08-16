@@ -5,7 +5,8 @@ import path from 'path';
 import { ACTIONS, getAction, listActions } from './capabilities';
 import { createMission, getMission, mockPublishDocketToIpfs } from './emperor';
 import { protocolStatus, readNextJobId, readJobSnapshot } from './protocol/read';
-import { buildCompletionUnsignedTx } from './tx/build';
+import { buildCompletionUnsignedTx, getUnsignedTx } from './tx/build';
+import { verifyCompletionOutcome } from './tx/outcome/verify';
 import type { ContractId } from './tx/types';
 
 // Load environment variables from .env file (game.agi.eth/.env)
@@ -151,6 +152,23 @@ app.post('/job/:id/completion-tx', (req, res) => {
     completionNote: body.completionNote,
   });
 
+  res.status(result.ok ? 200 : 409).json(result);
+});
+
+// Verify a submitted transaction READ-ONLY against a DRAFT unsigned request.
+// Confirms an external signer actually broadcast the intended tx and it
+// succeeded — target, value, calldata, function, and receipt all checked.
+app.post('/completion-tx/:id/verify', async (req, res) => {
+  const tx = getUnsignedTx(req.params.id);
+  const body = (req.body ?? {}) as { tx_hash?: string; operator_note?: string; manual_override?: boolean };
+  if (!body.tx_hash) return res.status(400).json({ error: 'tx_hash is required' });
+
+  const result = await verifyCompletionOutcome(tx, {
+    unsigned_tx_request_id: req.params.id,
+    tx_hash: body.tx_hash,
+    operator_note: body.operator_note,
+    manual_override: body.manual_override,
+  });
   res.status(result.ok ? 200 : 409).json(result);
 });
 

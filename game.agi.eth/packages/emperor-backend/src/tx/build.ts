@@ -20,6 +20,28 @@ export interface UnsignedTxBuildResult {
   wallet_export?: WalletExportPackage;
 }
 
+// Persisted DRAFT unsigned tx requests, keyed by unsigned_tx_id. Kept so the
+// read-only outcome verifier can compare a submitted on-chain tx against what
+// we actually intended. In-memory (mirrors the mission store).
+export interface StoredUnsignedTx {
+  id: string;
+  mission_id: string;
+  chain_id: number;
+  from: string;
+  to: string;
+  value: string;
+  data: string;
+  safety_checks: string; // JSON { checks, preview } — read by calldata-compare
+  status: 'DRAFT' | 'EXECUTED_EXTERNALLY';
+  tx_hash?: string;
+}
+
+const unsignedTxRequests = new Map<string, StoredUnsignedTx>();
+
+export function getUnsignedTx(id: string): StoredUnsignedTx | undefined {
+  return unsignedTxRequests.get(id);
+}
+
 export function buildCompletionUnsignedTx(
   mission: MissionRecord,
   opts: ResolveOptions,
@@ -65,5 +87,16 @@ export function buildCompletionUnsignedTx(
   // 4) DRAFT unsigned package + operator wallet export.
   const unsignedTxId = randomUUID();
   const walletExport = buildWalletExportPackage(unsignedTxId, preview, opts.operatorAddress, safety.checks);
+  unsignedTxRequests.set(unsignedTxId, {
+    id: unsignedTxId,
+    mission_id: mission.id,
+    chain_id: preview.chain_id,
+    from: opts.operatorAddress,
+    to: preview.to,
+    value: preview.value,
+    data: preview.data,
+    safety_checks: walletExport.safety_checks,
+    status: 'DRAFT',
+  });
   return { ok: true, status: 'DRAFT', blocking_reasons: [], unsigned_tx_id: unsignedTxId, preview, wallet_export: walletExport };
 }
