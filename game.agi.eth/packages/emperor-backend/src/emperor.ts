@@ -12,6 +12,7 @@
 import { ActionDef, getAction } from './capabilities';
 import { sha256Json, validateEvidenceDocket, type EvidenceDocket } from './evidence';
 import { readNextJobId } from './protocol/read';
+import { publishAndVerify, type PublishResult } from './ipfs/pin';
 
 export interface EvidenceItem {
   type: string;
@@ -58,6 +59,53 @@ let counter = 1;
 
 export function getMission(id: string): MissionRecord | undefined {
   return missions.get(id);
+}
+
+/**
+ * Real IPFS publication: pin the evidence bundle to IPFS (Pinata) and verify it
+ * by fetching it back and matching hashes. On success, records the CID and the
+ * fetchback proof on the docket so an unsigned completion tx can be built. Needs
+ * PINATA_JWT; returns a structured result (never throws).
+ */
+export async function publishDocketToIpfs(mission: MissionRecord): Promise<PublishResult> {
+  const d = mission.docket;
+  if (!d) return { ok: false, mode: 'ERROR', error: 'Mission has no sealed evidence docket' };
+
+  const bundle: Record<string, unknown> = {
+    docket_id: d.id,
+    execution_run_id: d.execution_run_id,
+    title: d.title,
+    summary: d.summary,
+    content_hash: d.content_hash,
+    intent: mission.intent,
+    result: mission.result,
+    evidence: mission.evidence,
+    validation: mission.validation,
+  };
+  const result = await publishAndVerify(bundle, `game-agi-evidence-${d.id}`);
+
+  if (result.ok && result.cid) {
+    let report: Record<string, unknown> = {};
+    try {
+      report = JSON.parse(d.validation_report);
+    } catch {
+      report = { raw: d.validation_report };
+    }
+    report.ipfs_publication = {
+      local_sha256: result.local_sha256,
+      fetched_sha256: result.fetched_sha256,
+      matched: result.matched === true,
+      mock: false,
+    };
+    d.ipfs_cid = result.cid;
+    d.publication_status = 'PUBLISHED_IPFS';
+    d.validation_report = JSON.stringify(report);
+    d.updated_at = new Date();
+    touch(mission, 'completed', `Docket published to IPFS (${result.cid.slice(0, 16)}…), fetchback verified.`);
+  } else {
+    touch(mission, 'completed', `IPFS publish did not complete: ${result.error ?? result.mode}.`);
+  }
+  return result;
 }
 
 /**

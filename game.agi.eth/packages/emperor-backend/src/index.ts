@@ -3,8 +3,9 @@ import * as dotenv from 'dotenv';
 import { z } from 'zod';
 import path from 'path';
 import { ACTIONS, getAction, listActions } from './capabilities';
-import { createMission, getMission, mockPublishDocketToIpfs } from './emperor';
+import { createMission, getMission, mockPublishDocketToIpfs, publishDocketToIpfs } from './emperor';
 import { protocolStatus, readNextJobId, readJobSnapshot } from './protocol/read';
+import { getIpfsConfig } from './ipfs/config';
 import { buildCompletionUnsignedTx, getUnsignedTx } from './tx/build';
 import { verifyCompletionOutcome } from './tx/outcome/verify';
 import type { ContractId } from './tx/types';
@@ -122,11 +123,17 @@ app.get('/job/:id/status', (req, res) => {
   });
 });
 
+// IPFS configuration status (is real publishing available?).
+app.get('/ipfs/status', (_req, res) => {
+  res.json(getIpfsConfig());
+});
+
 // Build an UNSIGNED completion transaction for a settled mission. Never signs
 // or broadcasts — returns a safety-gated DRAFT (with an operator wallet-export
-// package) or BLOCKED with reasons. Pass { publishMock: true } (dev only) to
-// mock-publish the evidence docket to IPFS so the happy path can be exercised.
-app.post('/job/:id/completion-tx', (req, res) => {
+// package) or BLOCKED with reasons.
+//   { publish: true }     -> real IPFS publish + fetchback (needs PINATA_JWT)
+//   { publishMock: true } -> dev-only mock publish (offline)
+app.post('/job/:id/completion-tx', async (req, res) => {
   const mission = getMission(req.params.id);
   if (!mission) return res.status(404).json({ error: 'Job not found' });
   if (mission.route !== 'AGIJOBMANAGER') {
@@ -138,10 +145,16 @@ app.post('/job/:id/completion-tx', (req, res) => {
     upstreamJobId?: string | number;
     operatorAddress?: string;
     completionNote?: string;
+    publish?: boolean;
     publishMock?: boolean;
   };
 
-  if (body.publishMock === true || req.query.mock === '1') {
+  if (body.publish === true || req.query.publish === '1') {
+    const pub = await publishDocketToIpfs(mission);
+    if (!pub.ok) {
+      return res.status(409).json({ ok: false, status: 'BLOCKED', stage: 'ipfs_publish', publish: pub, blocking_reasons: [pub.error ?? pub.mode] });
+    }
+  } else if (body.publishMock === true || req.query.mock === '1') {
     mockPublishDocketToIpfs(mission);
   }
 
