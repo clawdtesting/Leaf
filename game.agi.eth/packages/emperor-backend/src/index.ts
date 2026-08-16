@@ -2,9 +2,11 @@ import express from 'express';
 import * as dotenv from 'dotenv';
 import { ethers } from 'ethers';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
+import path from 'path';
 
 // Load environment variables from .env file
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
 app.use(express.json());
@@ -64,7 +66,7 @@ app.post('/intent', async (req, res) => {
     console.log('Received valid intent:', intent);
 
     // Create a job spec URI (could be IPFS hash, but for demo use a random UUID)
-    const jobSpecURI = `urn:uuid:${crypto.randomUUID()}`;
+    const jobSpecURI = `urn:uuid:${randomUUID()}`;
     const payout = 0; // 0 tokens for demo
     const duration = 3600; // 1 hour duration
     const details = JSON.stringify(intent);
