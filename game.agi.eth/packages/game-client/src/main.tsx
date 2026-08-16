@@ -194,7 +194,8 @@ function update(this: Phaser.Scene) {
 // --------------------------------------------------------------
 // Wallet & Auth helpers
 // --------------------------------------------------------------
-const MANCER_CONTRACT_ADDRESS = import.meta.env.VITE_MANCER_CONTRACT_ADDRESS; // set in .env
+const MANCER_CONTRACT_ADDRESS = import.meta.env.VITE_MANCER_CONTRACT_ADDRESS;
+const ROBINHOOD_RPC_URL = import.meta.env.VITE_ROBINHOOD_RPC_URL; // set in .env
 const MANCER_ABI = [
   "function balanceOf(address) view returns (uint256)"
 ];
@@ -235,17 +236,15 @@ async function verifySignature(address: string, signature: string): Promise<bool
 /** Check Mancer NFT ownership (read‑only, no wallet needed beyond address) */
 async function isMancerHolder(address: string): Promise<boolean> {
   try {
-    const provider = await getProvider();
+    const provider = new ethers.JsonRpcProvider(ROBINHOOD_RPC_URL);
     const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
     const bal = await contract.balanceOf(address);
     return bal.gt(0);
   } catch (e) {
     console.warn('Mancer check failed', e);
     return false; // fail‑closed
-  }
 }
-
-/** Mint an ENS sub‑domain – placeholder that calls a backend endpoint you’ll add */
+}
 async function mintEnsSubdomain(label: string): Promise<{ txHash?: string }> {
   const resp = await fetch('http://localhost:3001/ens/mint', {
     method: 'POST',
@@ -492,9 +491,29 @@ export default function App() {
         zIndex: 1000
       }}>
         {!walletConnected ? (
-          <button onClick={connectWallet} disabled={authenticating}>
-            {authenticating ? 'Connecting…' : 'Connect Wallet'}
-          </button>
+          <>
+            <button onClick={connectWallet} disabled={authenticating}>
+              {authenticating ? 'Connecting…' : 'Connect Wallet'}
+            </button>
+            {/* ENS mint row */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={ensLabel}
+                onChange={e => setEnsLabel(e.target.value)}
+                placeholder="ens label"
+                style={{ flex: 1, minWidth: '120px', padding: '4px', fontSize: '14px' }}
+                disabled={ensMinting}
+              />
+              <button
+                onClick={handleEnsMint}
+                disabled={!ensLabel.trim() || ensMinting}
+                style={{ padding: '4px 8px', fontSize: '14px', cursor: ensMinting ? 'not-allowed' : 'pointer' }}
+              >
+                {ensMinting ? 'Minting…' : 'Mint ENS'}
+              </button>
+            </div>
+          </>
         ) : (
           <>
             <div style={{ fontSize: '14px', color: '#fff' }}>
@@ -516,6 +535,24 @@ export default function App() {
             <button onClick={disconnectWallet} style={{ fontSize: '12px', padding: '2px 6px' }}>
               Disconnect
             </button>
+            {/* ENS mint row */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={ensLabel}
+                onChange={e => setEnsLabel(e.target.value)}
+                placeholder="ens label"
+                style={{ flex: 1, minWidth: '120px', padding: '4px', fontSize: '14px' }}
+                disabled={ensMinting}
+              />
+              <button
+                onClick={handleEnsMint}
+                disabled={!ensLabel.trim() || ensMinting}
+                style={{ padding: '4px 8px', fontSize: '14px', cursor: ensMinting ? 'not-allowed' : 'pointer' }}
+              >
+                {ensMinting ? 'Minting…' : 'Mint ENS'}
+              </button>
+            </div>
           </>
         )}
       </div>

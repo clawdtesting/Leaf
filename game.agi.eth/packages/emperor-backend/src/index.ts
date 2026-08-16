@@ -217,7 +217,7 @@ app.post('/auth/verify', async (req, res) => {
   if (!address || !signature) {
     return res.status(400).json({ error: 'Missing address or signature' });
   }
-  const ip = _req.ip || _req.connection.remoteAddress;
+  const ip = req.ip || req.connection.remoteAddress;
   const stored = nonces.get(ip);
   if (!stored) {
     return res.status(400).json({ error: 'No nonce found for this IP (may have expired)' });

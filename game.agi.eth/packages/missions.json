@@ -1,0 +1,864 @@
+[
+  {
+    "id": "1",
+    "intent": {
+      "action": "CAPABILITY_DISCOVERY",
+      "target": "Cross-chain auditing",
+      "details": "Seed a new capability where existing ones fall short"
+    },
+    "capability": "NovaSeed",
+    "building": "Nova Garden",
+    "route": "GOALOS",
+    "budgetClass": "novaseed-small",
+    "status": "completed",
+    "plan": [
+      "Detect capability gap",
+      "Generate candidate approaches",
+      "Evaluate candidates",
+      "Fresh-work test",
+      "Promote or reject"
+    ],
+    "evidence": [
+      {
+        "type": "candidate",
+        "ref": "output/artifacts/mock-candidate.txt",
+        "summary": "artifact sha256:318bef52e49d9223…"
+      },
+      {
+        "type": "artifact",
+        "ref": "output/artifacts/mock-contracts.txt",
+        "summary": "artifact sha256:b1aa409405918456…"
+      },
+      {
+        "type": "artifact",
+        "ref": "output/artifacts/mock-documentation.txt",
+        "summary": "artifact sha256:93a1146ec104a029…"
+      },
+      {
+        "type": "fresh-evaluation",
+        "ref": "output/artifacts/mock-fresh-evaluation.txt",
+        "summary": "artifact sha256:318bef52e49d9223…"
+      },
+      {
+        "type": "artifact",
+        "ref": "output/artifacts/mock-product.txt",
+        "summary": "artifact sha256:b1aa409405918456…"
+      },
+      {
+        "type": "artifact",
+        "ref": "output/artifacts/mock-repository.txt",
+        "summary": "artifact sha256:b1aa409405918456…"
+      },
+      {
+        "type": "artifact",
+        "ref": "output/artifacts/mock-source.txt",
+        "summary": "artifact sha256:40e769ec9150e357…"
+      },
+      {
+        "type": "artifact",
+        "ref": "output/artifacts/mock-static-analysis.txt",
+        "summary": "artifact sha256:37e9b4f5376a2024…"
+      },
+      {
+        "type": "artifact",
+        "ref": "output/artifacts/mock-tests.txt",
+        "summary": "artifact sha256:37e9b4f5376a2024…"
+      },
+      {
+        "type": "log",
+        "ref": "output/logs/mock-hermes-run.log",
+        "summary": "log sha256:c818713eafb8bf45…"
+      }
+    ],
+    "log": [
+      {
+        "t": 1786916405356,
+        "stage": "accepted",
+        "note": "Emperor accepted intent for NovaSeed (GOALOS)"
+      },
+      {
+        "t": 1786916406570,
+        "stage": "planning",
+        "note": "Decomposed objective into 5 steps via GOALOS"
+      },
+      {
+        "t": 1786916408779,
+        "stage": "executing",
+        "note": "Executing NovaSeed via Hermes (MOCK)"
+      },
+      {
+        "t": 1786916408785,
+        "stage": "executing",
+        "note": "Hermes COMPLETED: 10 evidence item(s) produced."
+      },
+      {
+        "t": 1786916410125,
+        "stage": "validating",
+        "note": "Independent validation: PASS"
+      },
+      {
+        "t": 1786916417502,
+        "stage": "completed",
+        "note": "Docket published to IPFS (QmdBscswva21oXZg…), fetchback verified."
+      },
+      {
+        "t": 1786916417502,
+        "stage": "completed",
+        "note": "Evidence accepted; docket published to IPFS QmdBscswva21…"
+      }
+    ],
+    "createdAt": 1786916405355,
+    "updatedAt": 1786916417502,
+    "result": {
+      "message": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
+      "summary": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
+      "data": [
+        "output/artifacts/mock-candidate.txt",
+        "output/artifacts/mock-contracts.txt",
+        "output/artifacts/mock-documentation.txt",
+        "output/artifacts/mock-fresh-evaluation.txt",
+        "output/artifacts/mock-product.txt",
+        "output/artifacts/mock-repository.txt",
+        "output/artifacts/mock-source.txt",
+        "output/artifacts/mock-static-analysis.txt",
+        "output/artifacts/mock-tests.txt"
+      ],
+      "hermes": {
+        "mode": "MOCK",
+        "status": "COMPLETED",
+        "workspace_path": "data/hermes-workspaces/1",
+        "artifacts": [
+          {
+            "path": "output/artifacts/mock-candidate.txt",
+            "sha256": "318bef52e49d92233d009410165e0fe638b795bb5e8308d90b3b5de11f5e0e58"
+          },
+          {
+            "path": "output/artifacts/mock-contracts.txt",
+            "sha256": "b1aa40940591845692fd81e29b24e5a25db46f12c1f9d87776e4b86abb178185"
+          },
+          {
+            "path": "output/artifacts/mock-documentation.txt",
+            "sha256": "93a1146ec104a0294def2e5cc3a4fcb865ea262cdddabbfff4a6fc4b59d4fc0d"
+          },
+          {
+            "path": "output/artifacts/mock-fresh-evaluation.txt",
+            "sha256": "318bef52e49d92233d009410165e0fe638b795bb5e8308d90b3b5de11f5e0e58"
+          },
+          {
+            "path": "output/artifacts/mock-product.txt",
+            "sha256": "b1aa40940591845692fd81e29b24e5a25db46f12c1f9d87776e4b86abb178185"
+          },
+          {
+            "path": "output/artifacts/mock-repository.txt",
+            "sha256": "b1aa40940591845692fd81e29b24e5a25db46f12c1f9d87776e4b86abb178185"
+          },
+          {
+            "path": "output/artifacts/mock-source.txt",
+            "sha256": "40e769ec9150e357d1a480caf681aa0f0694aec233b92499b819aae1a60b397c"
+          },
+          {
+            "path": "output/artifacts/mock-static-analysis.txt",
+            "sha256": "37e9b4f5376a2024de287eb97d63928f9c7e9cdcfbe62d55abeec89ffa7deddf"
+          },
+          {
+            "path": "output/artifacts/mock-tests.txt",
+            "sha256": "37e9b4f5376a2024de287eb97d63928f9c7e9cdcfbe62d55abeec89ffa7deddf"
+          }
+        ],
+        "logs": [
+          {
+            "path": "output/logs/mock-hermes-run.log",
+            "sha256": "c818713eafb8bf45dfc9298dcfc502e5dc498948782f85d4e68347f99e0a15ec"
+          }
+        ],
+        "safety_findings": [
+          "Mock mode: no actual Hermes binary invoked"
+        ],
+        "result_json": {
+          "status": "COMPLETED",
+          "summary": "Mock Hermes execution for NovaSeed: Cross-chain auditing",
+          "completed_at": "2026-08-16T21:40:08.780Z",
+          "artifacts_created": [
+            "mock-candidate.txt",
+            "mock-fresh-evaluation.txt"
+          ],
+          "logs": [
+            "mock-hermes-run.log"
+          ],
+          "metadata": {}
+        }
+      }
+    },
+    "cost": {
+      "unit": "USDC",
+      "amount": 0
+    },
+    "validation": {
+      "verdict": "PASS",
+      "validator": "hall-of-judgment",
+      "notes": "All required evidence present."
+    },
+    "docket": {
+      "id": "docket-1",
+      "execution_run_id": "1",
+      "title": "NovaSeed — Cross-chain auditing #1",
+      "summary": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
+      "artifact_manifest": [],
+      "validation_report": "{\"verdict\":\"PASS\",\"validator\":\"hall-of-judgment\",\"notes\":\"All required evidence present.\",\"ipfs_publication\":{\"local_sha256\":\"467e78a6df58b244f7168f0f6f7bba8267902465a0f13ac68a1fb60c6e174ac7\",\"fetched_sha256\":\"467e78a6df58b244f7168f0f6f7bba8267902465a0f13ac68a1fb60c6e174ac7\",\"matched\":true,\"mock\":false}}",
+      "content_hash": "10e34fe0a5fe019ffc2b9f804970d3a48bb153f3d8b4bcd1995f21043c459a5e",
+      "publication_status": "PUBLISHED_IPFS",
+      "created_at": "2026-08-16T21:40:11.326Z",
+      "updated_at": "2026-08-16T21:40:17.502Z",
+      "ipfs_cid": "QmdBscswva21oXZg6fgezHpBE9VTyqpkZwHXpA3dXyWNr6"
+    }
+  },
+  {
+    "id": "2",
+    "intent": {
+      "action": "CAPABILITY_DISCOVERY",
+      "target": "Cross-chain auditing",
+      "details": "Seed a new capability where existing ones fall short"
+    },
+    "capability": "NovaSeed",
+    "building": "Nova Garden",
+    "route": "GOALOS",
+    "budgetClass": "novaseed-small",
+    "status": "completed",
+    "plan": [
+      "Detect capability gap",
+      "Generate candidate approaches",
+      "Evaluate candidates",
+      "Fresh-work test",
+      "Promote or reject"
+    ],
+    "evidence": [
+      {
+        "type": "candidate",
+        "ref": "output/artifacts/mock-candidate.txt",
+        "summary": "artifact sha256:cb7621b27a96ed42…"
+      },
+      {
+        "type": "fresh-evaluation",
+        "ref": "output/artifacts/mock-fresh-evaluation.txt",
+        "summary": "artifact sha256:cb7621b27a96ed42…"
+      },
+      {
+        "type": "log",
+        "ref": "output/logs/mock-hermes-run.log",
+        "summary": "log sha256:5df4ebd362c33a2c…"
+      }
+    ],
+    "log": [
+      {
+        "t": 1786912468612,
+        "stage": "accepted",
+        "note": "Emperor accepted intent for NovaSeed (GOALOS)"
+      },
+      {
+        "t": 1786912464211,
+        "stage": "planning",
+        "note": "Decomposed objective into 5 steps via GOALOS"
+      },
+      {
+        "t": 1786912466420,
+        "stage": "executing",
+        "note": "Executing NovaSeed via Hermes (MOCK)"
+      },
+      {
+        "t": 1786912466424,
+        "stage": "executing",
+        "note": "Hermes COMPLETED: 3 evidence item(s) produced."
+      },
+      {
+        "t": 1786912468236,
+        "stage": "validating",
+        "note": "Independent validation: PASS"
+      },
+      {
+        "t": 1786912475461,
+        "stage": "completed",
+        "note": "Docket published to IPFS (QmWibodFpboUg8iV…), fetchback verified."
+      },
+      {
+        "t": 1786912475461,
+        "stage": "completed",
+        "note": "Evidence accepted; docket published to IPFS QmWibodFpboU…"
+      }
+    ],
+    "createdAt": 1786912468612,
+    "updatedAt": 1786912475461,
+    "result": {
+      "message": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
+      "summary": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
+      "data": [
+        "output/artifacts/mock-candidate.txt",
+        "output/artifacts/mock-fresh-evaluation.txt"
+      ],
+      "hermes": {
+        "mode": "MOCK",
+        "status": "COMPLETED",
+        "workspace_path": "data/hermes-workspaces/2",
+        "artifacts": [
+          {
+            "path": "output/artifacts/mock-candidate.txt",
+            "sha256": "cb7621b27a96ed42eccd55aa850c95cce1e4cd1669ebe9f1936c4aab3f08230c"
+          },
+          {
+            "path": "output/artifacts/mock-fresh-evaluation.txt",
+            "sha256": "cb7621b27a96ed42eccd55aa850c95cce1e4cd1669ebe9f1936c4aab3f08230c"
+          }
+        ],
+        "logs": [
+          {
+            "path": "output/logs/mock-hermes-run.log",
+            "sha256": "5df4ebd362c33a2cbab5e0acbf20c967c7cb16a42e8bcac6d5c4eb425b6d059d"
+          }
+        ],
+        "safety_findings": [
+          "Mock mode: no actual Hermes binary invoked"
+        ],
+        "result_json": {
+          "status": "COMPLETED",
+          "summary": "Mock Hermes execution for NovaSeed: Cross-chain auditing",
+          "completed_at": "2026-08-16T20:34:26.423Z",
+          "artifacts_created": [
+            "mock-candidate.txt",
+            "mock-fresh-evaluation.txt"
+          ],
+          "logs": [
+            "mock-hermes-run.log"
+          ],
+          "metadata": {}
+        }
+      }
+    },
+    "cost": {
+      "unit": "USDC",
+      "amount": 0
+    },
+    "validation": {
+      "verdict": "PASS",
+      "validator": "hall-of-judgment",
+      "notes": "All required evidence present."
+    },
+    "docket": {
+      "id": "docket-2",
+      "execution_run_id": "2",
+      "title": "NovaSeed — Cross-chain auditing #2",
+      "summary": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
+      "artifact_manifest": [],
+      "validation_report": "{\"verdict\":\"PASS\",\"validator\":\"hall-of-judgment\",\"notes\":\"All required evidence present.\",\"ipfs_publication\":{\"local_sha256\":\"5aef3e63a817b6c12d4ecfe2292706225897757490c0c26be42e0721ce0dda75\",\"fetched_sha256\":\"5aef3e63a817b6c12d4ecfe2292706225897757490c0c26be42e0721ce0dda75\",\"matched\":true,\"mock\":false}}",
+      "content_hash": "079ee9e56f6f98cdc5205045094dbd0c102861579d622bc751c32ab6e8702388",
+      "publication_status": "PUBLISHED_IPFS",
+      "created_at": "2026-08-16T20:34:28.958Z",
+      "updated_at": "2026-08-16T20:34:35.461Z",
+      "ipfs_cid": "QmWibodFpboUg8iVi47tneeCbbhFRRLgHQzKKRHBkqYWer"
+    }
+  },
+  {
+    "id": "3",
+    "intent": {
+      "action": "SMART_CONTRACT_DEVELOPMENT",
+      "target": "Settlement contract",
+      "details": "Build a settlement contract with signed offers and a 1% fee"
+    },
+    "capability": "Engineering / Solidity",
+    "building": "The Forge",
+    "route": "AGIJOBMANAGER",
+    "budgetClass": "engineering-medium",
+    "status": "completed",
+    "plan": [
+      "Capture requirements",
+      "Threat model",
+      "Implement Solidity",
+      "Write Foundry tests",
+      "Static analysis",
+      "Package deliverable"
+    ],
+    "evidence": [
+      {
+        "type": "documentation",
+        "ref": "output/artifacts/mock-documentation.txt",
+        "summary": "artifact sha256:50b55f73945e9c5b…"
+      },
+      {
+        "type": "source",
+        "ref": "output/artifacts/mock-source.txt",
+        "summary": "artifact sha256:50b55f73945e9c5b…"
+      },
+      {
+        "type": "static-analysis",
+        "ref": "output/artifacts/mock-static-analysis.txt",
+        "summary": "artifact sha256:50b55f73945e9c5b…"
+      },
+      {
+        "type": "tests",
+        "ref": "output/artifacts/mock-tests.txt",
+        "summary": "artifact sha256:50b55f73945e9c5b…"
+      },
+      {
+        "type": "log",
+        "ref": "output/logs/mock-hermes-run.log",
+        "summary": "log sha256:06ece1db5f8c0a30…"
+      },
+      {
+        "type": "onchain-read",
+        "ref": "nextJobId=12",
+        "summary": "Live AGIJobManager read succeeded"
+      }
+    ],
+    "log": [
+      {
+        "t": 1786912835251,
+        "stage": "accepted",
+        "note": "Emperor accepted intent for Engineering / Solidity (AGIJOBMANAGER)"
+      },
+      {
+        "t": 1786912836459,
+        "stage": "planning",
+        "note": "Decomposed objective into 6 steps via AGIJOBMANAGER"
+      },
+      {
+        "t": 1786912838659,
+        "stage": "executing",
+        "note": "Executing Engineering / Solidity via Hermes (MOCK)"
+      },
+      {
+        "t": 1786912838664,
+        "stage": "executing",
+        "note": "Hermes COMPLETED: 5 evidence item(s) produced."
+      },
+      {
+        "t": 1786912838840,
+        "stage": "executing",
+        "note": "On-chain read: nextJobId=12"
+      },
+      {
+        "t": 1786912840150,
+        "stage": "validating",
+        "note": "Independent validation: PASS"
+      },
+      {
+        "t": 1786912877088,
+        "stage": "completed",
+        "note": "IPFS publish did not complete: Fetchback failed: gateway 404"
+      },
+      {
+        "t": 1786912877088,
+        "stage": "completed",
+        "note": "Evidence accepted; IPFS publish failed: Fetchback failed: gateway 404"
+      }
+    ],
+    "createdAt": 1786912835251,
+    "updatedAt": 1786912877088,
+    "result": {
+      "message": "Mock Hermes task completed: Engineering / Solidity: Settlement contract",
+      "summary": "Mock Hermes task completed: Engineering / Solidity: Settlement contract",
+      "data": [
+        "output/artifacts/mock-documentation.txt",
+        "output/artifacts/mock-source.txt",
+        "output/artifacts/mock-static-analysis.txt",
+        "output/artifacts/mock-tests.txt"
+      ],
+      "hermes": {
+        "mode": "MOCK",
+        "status": "COMPLETED",
+        "workspace_path": "data/hermes-workspaces/3",
+        "artifacts": [
+          {
+            "path": "output/artifacts/mock-documentation.txt",
+            "sha256": "50b55f73945e9c5bb6156e9f5c8bf8a2dcdfb05fee86955863502b902adde45d"
+          },
+          {
+            "path": "output/artifacts/mock-source.txt",
+            "sha256": "50b55f73945e9c5bb6156e9f5c8bf8a2dcdfb05fee86955863502b902adde45d"
+          },
+          {
+            "path": "output/artifacts/mock-static-analysis.txt",
+            "sha256": "50b55f73945e9c5bb6156e9f5c8bf8a2dcdfb05fee86955863502b902adde45d"
+          },
+          {
+            "path": "output/artifacts/mock-tests.txt",
+            "sha256": "50b55f73945e9c5bb6156e9f5c8bf8a2dcdfb05fee86955863502b902adde45d"
+          }
+        ],
+        "logs": [
+          {
+            "path": "output/logs/mock-hermes-run.log",
+            "sha256": "06ece1db5f8c0a301f51175ba7944ce9907c1955e8a3f1cdea5d5be06adda5cd"
+          }
+        ],
+        "safety_findings": [
+          "Mock mode: no actual Hermes binary invoked"
+        ],
+        "result_json": {
+          "status": "COMPLETED",
+          "summary": "Mock Hermes execution for Engineering / Solidity: Settlement contract",
+          "completed_at": "2026-08-16T20:40:38.662Z",
+          "artifacts_created": [
+            "mock-source.txt",
+            "mock-tests.txt",
+            "mock-static-analysis.txt",
+            "mock-documentation.txt"
+          ],
+          "logs": [
+            "mock-hermes-run.log"
+          ],
+          "metadata": {}
+        }
+      }
+    },
+    "cost": {
+      "unit": "USDC",
+      "amount": 0
+    },
+    "validation": {
+      "verdict": "PASS",
+      "validator": "hall-of-judgment",
+      "notes": "All required evidence present."
+    },
+    "docket": {
+      "id": "docket-3",
+      "execution_run_id": "3",
+      "title": "Engineering / Solidity — Settlement contract #3",
+      "summary": "Mock Hermes task completed: Engineering / Solidity: Settlement contract",
+      "artifact_manifest": [],
+      "validation_report": "{\"verdict\":\"PASS\",\"validator\":\"hall-of-judgment\",\"notes\":\"All required evidence present.\"}",
+      "content_hash": "64ed587094425bec2a0a64d7be57dc68cae87a28beb8822d0943b1b95503ba9a",
+      "publication_status": "FAILED",
+      "created_at": "2026-08-16T20:40:41.391Z",
+      "updated_at": "2026-08-16T20:40:41.391Z"
+    }
+  },
+  {
+    "id": "4",
+    "intent": {
+      "action": "ECOSYSTEM_RESEARCH",
+      "target": "Robinhood Chain",
+      "details": "Find 10 projects with demonstrated real utility"
+    },
+    "capability": "Research",
+    "building": "Explorer's Guild",
+    "route": "GOALOS",
+    "budgetClass": "research-small",
+    "status": "completed",
+    "plan": [
+      "Discover candidate universe",
+      "Verify project existence",
+      "Inspect documentation, contracts and repositories",
+      "Assess product utility and risk",
+      "Collect evidence and score candidates",
+      "Produce ranked conclusion"
+    ],
+    "evidence": [
+      {
+        "type": "contracts",
+        "ref": "output/artifacts/mock-contracts.txt",
+        "summary": "artifact sha256:218b62ac44928fa5…"
+      },
+      {
+        "type": "documentation",
+        "ref": "output/artifacts/mock-documentation.txt",
+        "summary": "artifact sha256:218b62ac44928fa5…"
+      },
+      {
+        "type": "product",
+        "ref": "output/artifacts/mock-product.txt",
+        "summary": "artifact sha256:218b62ac44928fa5…"
+      },
+      {
+        "type": "repository",
+        "ref": "output/artifacts/mock-repository.txt",
+        "summary": "artifact sha256:218b62ac44928fa5…"
+      },
+      {
+        "type": "log",
+        "ref": "output/logs/mock-hermes-run.log",
+        "summary": "log sha256:4e85a7dcbeb57d4e…"
+      }
+    ],
+    "log": [
+      {
+        "t": 1786912839089,
+        "stage": "accepted",
+        "note": "Emperor accepted intent for Research (GOALOS)"
+      },
+      {
+        "t": 1786912840302,
+        "stage": "planning",
+        "note": "Decomposed objective into 6 steps via GOALOS"
+      },
+      {
+        "t": 1786912842505,
+        "stage": "executing",
+        "note": "Executing Research via Hermes (MOCK)"
+      },
+      {
+        "t": 1786912842509,
+        "stage": "executing",
+        "note": "Hermes COMPLETED: 5 evidence item(s) produced."
+      },
+      {
+        "t": 1786912843817,
+        "stage": "validating",
+        "note": "Independent validation: PASS"
+      },
+      {
+        "t": 1786912855481,
+        "stage": "completed",
+        "note": "Docket published to IPFS (QmePmueaDYS43JAv…), fetchback verified."
+      },
+      {
+        "t": 1786912855482,
+        "stage": "completed",
+        "note": "Evidence accepted; docket published to IPFS QmePmueaDYS4…"
+      }
+    ],
+    "createdAt": 1786912839089,
+    "updatedAt": 1786912855482,
+    "result": {
+      "message": "Mock Hermes task completed: Research: Robinhood Chain",
+      "summary": "Mock Hermes task completed: Research: Robinhood Chain",
+      "data": [
+        "output/artifacts/mock-contracts.txt",
+        "output/artifacts/mock-documentation.txt",
+        "output/artifacts/mock-product.txt",
+        "output/artifacts/mock-repository.txt"
+      ],
+      "hermes": {
+        "mode": "MOCK",
+        "status": "COMPLETED",
+        "workspace_path": "data/hermes-workspaces/4",
+        "artifacts": [
+          {
+            "path": "output/artifacts/mock-contracts.txt",
+            "sha256": "218b62ac44928fa556972d82fde24417d6f8e1c66e818ab32bdf1d7435a86de9"
+          },
+          {
+            "path": "output/artifacts/mock-documentation.txt",
+            "sha256": "218b62ac44928fa556972d82fde24417d6f8e1c66e818ab32bdf1d7435a86de9"
+          },
+          {
+            "path": "output/artifacts/mock-product.txt",
+            "sha256": "218b62ac44928fa556972d82fde24417d6f8e1c66e818ab32bdf1d7435a86de9"
+          },
+          {
+            "path": "output/artifacts/mock-repository.txt",
+            "sha256": "218b62ac44928fa556972d82fde24417d6f8e1c66e818ab32bdf1d7435a86de9"
+          }
+        ],
+        "logs": [
+          {
+            "path": "output/logs/mock-hermes-run.log",
+            "sha256": "4e85a7dcbeb57d4eaf678efa10d860eb2dacd1960724c55b0dfa1d3c9241dd3f"
+          }
+        ],
+        "safety_findings": [
+          "Mock mode: no actual Hermes binary invoked"
+        ],
+        "result_json": {
+          "status": "COMPLETED",
+          "summary": "Mock Hermes execution for Research: Robinhood Chain",
+          "completed_at": "2026-08-16T20:40:42.508Z",
+          "artifacts_created": [
+            "mock-repository.txt",
+            "mock-product.txt",
+            "mock-contracts.txt",
+            "mock-documentation.txt"
+          ],
+          "logs": [
+            "mock-hermes-run.log"
+          ],
+          "metadata": {}
+        }
+      }
+    },
+    "cost": {
+      "unit": "USDC",
+      "amount": 0
+    },
+    "validation": {
+      "verdict": "PASS",
+      "validator": "hall-of-judgment",
+      "notes": "All required evidence present."
+    },
+    "docket": {
+      "id": "docket-4",
+      "execution_run_id": "4",
+      "title": "Research — Robinhood Chain #4",
+      "summary": "Mock Hermes task completed: Research: Robinhood Chain",
+      "artifact_manifest": [],
+      "validation_report": "{\"verdict\":\"PASS\",\"validator\":\"hall-of-judgment\",\"notes\":\"All required evidence present.\",\"ipfs_publication\":{\"local_sha256\":\"1257621fb73fc33e7fc136c613d412a2a4eb4ea51a543b03610e37c82ec7c36e\",\"fetched_sha256\":\"1257621fb73fc33e7fc136c613d412a2a4eb4ea51a543b03610e37c82ec7c36e\",\"matched\":true,\"mock\":false}}",
+      "content_hash": "94eb7b9ed98c112f1201bef292fc2a7883622de91baf043fb5d62693b2563c43",
+      "publication_status": "PUBLISHED_IPFS",
+      "created_at": "2026-08-16T20:40:45.053Z",
+      "updated_at": "2026-08-16T20:40:55.481Z",
+      "ipfs_cid": "QmePmueaDYS43JAvAQQe52ASb31uUE7h2s5QyaggnorAro"
+    }
+  },
+  {
+    "id": "5",
+    "intent": {
+      "action": "ECOSYSTEM_RESEARCH",
+      "target": "Robinhood Chain",
+      "details": "Find 10 projects with demonstrated real utility"
+    },
+    "capability": "Research",
+    "building": "Explorer's Guild",
+    "route": "GOALOS",
+    "budgetClass": "research-small",
+    "status": "completed",
+    "plan": [
+      "Discover candidate universe",
+      "Verify project existence",
+      "Inspect documentation, contracts and repositories",
+      "Assess product utility and risk",
+      "Collect evidence and score candidates",
+      "Produce ranked conclusion"
+    ],
+    "evidence": [
+      {
+        "type": "contracts",
+        "ref": "output/artifacts/mock-contracts.txt",
+        "summary": "artifact sha256:2c5d8ea66f10d553…"
+      },
+      {
+        "type": "documentation",
+        "ref": "output/artifacts/mock-documentation.txt",
+        "summary": "artifact sha256:2c5d8ea66f10d553…"
+      },
+      {
+        "type": "product",
+        "ref": "output/artifacts/mock-product.txt",
+        "summary": "artifact sha256:2c5d8ea66f10d553…"
+      },
+      {
+        "type": "repository",
+        "ref": "output/artifacts/mock-repository.txt",
+        "summary": "artifact sha256:2c5d8ea66f10d553…"
+      },
+      {
+        "type": "log",
+        "ref": "output/logs/mock-hermes-run.log",
+        "summary": "log sha256:b7ab6d29ff424950…"
+      }
+    ],
+    "log": [
+      {
+        "t": 1786912842444,
+        "stage": "accepted",
+        "note": "Emperor accepted intent for Research (GOALOS)"
+      },
+      {
+        "t": 1786912843674,
+        "stage": "planning",
+        "note": "Decomposed objective into 6 steps via GOALOS"
+      },
+      {
+        "t": 1786912845381,
+        "stage": "executing",
+        "note": "Executing Research via Hermes (MOCK)"
+      },
+      {
+        "t": 1786912845386,
+        "stage": "executing",
+        "note": "Hermes COMPLETED: 5 evidence item(s) produced."
+      },
+      {
+        "t": 1786912847188,
+        "stage": "validating",
+        "note": "Independent validation: PASS"
+      },
+      {
+        "t": 1786912882327,
+        "stage": "completed",
+        "note": "IPFS publish did not complete: Fetchback failed: gateway 404"
+      },
+      {
+        "t": 1786912882327,
+        "stage": "completed",
+        "note": "Evidence accepted; IPFS publish failed: Fetchback failed: gateway 404"
+      }
+    ],
+    "createdAt": 1786912842443,
+    "updatedAt": 1786912882327,
+    "result": {
+      "message": "Mock Hermes task completed: Research: Robinhood Chain",
+      "summary": "Mock Hermes task completed: Research: Robinhood Chain",
+      "data": [
+        "output/artifacts/mock-contracts.txt",
+        "output/artifacts/mock-documentation.txt",
+        "output/artifacts/mock-product.txt",
+        "output/artifacts/mock-repository.txt"
+      ],
+      "hermes": {
+        "mode": "MOCK",
+        "status": "COMPLETED",
+        "workspace_path": "data/hermes-workspaces/5",
+        "artifacts": [
+          {
+            "path": "output/artifacts/mock-contracts.txt",
+            "sha256": "2c5d8ea66f10d553f9561c056e528b9787e8ded2fbe65287bef64d8c8ad017eb"
+          },
+          {
+            "path": "output/artifacts/mock-documentation.txt",
+            "sha256": "2c5d8ea66f10d553f9561c056e528b9787e8ded2fbe65287bef64d8c8ad017eb"
+          },
+          {
+            "path": "output/artifacts/mock-product.txt",
+            "sha256": "2c5d8ea66f10d553f9561c056e528b9787e8ded2fbe65287bef64d8c8ad017eb"
+          },
+          {
+            "path": "output/artifacts/mock-repository.txt",
+            "sha256": "2c5d8ea66f10d553f9561c056e528b9787e8ded2fbe65287bef64d8c8ad017eb"
+          }
+        ],
+        "logs": [
+          {
+            "path": "output/logs/mock-hermes-run.log",
+            "sha256": "b7ab6d29ff42495012998b80dd288e742333d7e799b03830e08629a47ad05d3d"
+          }
+        ],
+        "safety_findings": [
+          "Mock mode: no actual Hermes binary invoked"
+        ],
+        "result_json": {
+          "status": "COMPLETED",
+          "summary": "Mock Hermes execution for Research: Robinhood Chain",
+          "completed_at": "2026-08-16T20:40:45.384Z",
+          "artifacts_created": [
+            "mock-repository.txt",
+            "mock-product.txt",
+            "mock-contracts.txt",
+            "mock-documentation.txt"
+          ],
+          "logs": [
+            "mock-hermes-run.log"
+          ],
+          "metadata": {}
+        }
+      }
+    },
+    "cost": {
+      "unit": "USDC",
+      "amount": 0
+    },
+    "validation": {
+      "verdict": "PASS",
+      "validator": "hall-of-judgment",
+      "notes": "All required evidence present."
+    },
+    "docket": {
+      "id": "docket-5",
+      "execution_run_id": "5",
+      "title": "Research — Robinhood Chain #5",
+      "summary": "Mock Hermes task completed: Research: Robinhood Chain",
+      "artifact_manifest": [],
+      "validation_report": "{\"verdict\":\"PASS\",\"validator\":\"hall-of-judgment\",\"notes\":\"All required evidence present.\"}",
+      "content_hash": "0ac7f16f1c4932541a0a9215892e23461068265028d0e5750df181a7228e436f",
+      "publication_status": "FAILED",
+      "created_at": "2026-08-16T20:40:48.390Z",
+      "updated_at": "2026-08-16T20:40:48.390Z"
+    }
+  }
+]
