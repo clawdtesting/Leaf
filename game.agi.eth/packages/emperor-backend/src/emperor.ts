@@ -13,6 +13,8 @@ import { ActionDef, getAction } from './capabilities';
 import { sha256Json, validateEvidenceDocket, type EvidenceDocket } from './evidence';
 import { readNextJobId } from './protocol/read';
 import { publishAndVerify, type PublishResult } from './ipfs/pin';
+import { hermesEnabled, runViaHermes } from './agents/hermes/executor';
+import { getHermesConfig } from './agents/hermes/config';
 
 export interface EvidenceItem {
   type: string;
@@ -187,11 +189,26 @@ function runPipeline(m: MissionRecord, def: ActionDef) {
     // 2) Execution (produces action-specific result + evidence)
     setTimeout(async () => {
       m.status = 'executing';
-      touch(m, 'executing', `Executing ${def.capability} work.`);
-      const { result, evidence, cost } = runExecutor(def, m.intent);
-      m.result = result;
-      m.evidence = evidence;
-      m.cost = cost;
+      if (hermesEnabled()) {
+        touch(m, 'executing', `Executing ${def.capability} via Hermes (${getHermesConfig().mode}).`);
+        try {
+          const h = await runViaHermes(m.id, def, m.intent);
+          m.result = h.result;
+          m.evidence = h.evidence;
+          m.cost = h.cost;
+          touch(m, 'executing', `Hermes ${h.status}: ${h.evidence.length} evidence item(s) produced.`);
+        } catch (e) {
+          touch(m, 'executing', `Hermes error: ${(e as Error).message}.`);
+          m.result = { message: 'Hermes execution error', error: (e as Error).message };
+          m.evidence = [];
+        }
+      } else {
+        touch(m, 'executing', `Executing ${def.capability} work (simulated).`);
+        const { result, evidence, cost } = runExecutor(def, m.intent);
+        m.result = result;
+        m.evidence = evidence;
+        m.cost = cost;
+      }
 
       // AGIJobManager-routed work touches the real protocol read path
       // (defensive: no-op when ETH_RPC_URL is unset / unreachable).

@@ -6,6 +6,7 @@ import { ACTIONS, getAction, listActions } from './capabilities';
 import { createMission, getMission, mockPublishDocketToIpfs, publishDocketToIpfs } from './emperor';
 import { protocolStatus, readNextJobId, readJobSnapshot } from './protocol/read';
 import { getIpfsConfig } from './ipfs/config';
+import { getSanitizedHermesConfigSummary } from './agents/hermes/config';
 import { buildCompletionUnsignedTx, getUnsignedTx } from './tx/build';
 import { verifyCompletionOutcome } from './tx/outcome/verify';
 import type { ContractId } from './tx/types';
@@ -126,6 +127,11 @@ app.get('/job/:id/status', (req, res) => {
 // IPFS configuration status (is real publishing available?).
 app.get('/ipfs/status', (_req, res) => {
   res.json(getIpfsConfig());
+});
+
+// Hermes executor status (is real/mock agent execution active?).
+app.get('/hermes/status', (_req, res) => {
+  res.json(getSanitizedHermesConfigSummary());
 });
 
 // Build an UNSIGNED completion transaction for a settled mission. Never signs

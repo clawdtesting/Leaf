@@ -16,3 +16,5 @@ Thumbs.db
 
 # Misc
 .env.example
+# Hermes agent workspace outputs
+data/hermes-workspaces/
