@@ -120,7 +120,14 @@ def main():
         base = os.path.basename(path)
         if base in SKIP:
             continue
-        if base in TEXTURES:
+        if base.endswith("-inside.jpg"):
+            # Building interiors: full opaque room backgrounds shown fit-to-screen,
+            # so no background keying — keep them large.
+            out = base[:-4] + ".png"
+            img = cap(Image.open(path).convert("RGB"), 1408)
+            img.save(os.path.join(ASSETS, out))
+            print(f"{base:44s} -> {out}  (interior {img.size[0]}x{img.size[1]})")
+        elif base in TEXTURES:
             out = TEXTURES[base]
             img = cap(Image.open(path).convert("RGB"), 256)
             img.save(os.path.join(ASSETS, out))
