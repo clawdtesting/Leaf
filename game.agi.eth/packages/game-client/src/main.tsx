@@ -517,7 +517,7 @@ export default function App() {
 
   // ----- Render -----
   return (
-    <div style={{ padding: '1rem', fontFamily: 'sans-serif', position: 'relative' }}>
+    <div style={{ padding: '1rem', fontFamily: 'sans-serif', position: 'relative', minHeight: '100vh' }}>
       {/* ==== Wallet bar (top‑right) ==== */}
       <div style={{
         position: 'fixed',
