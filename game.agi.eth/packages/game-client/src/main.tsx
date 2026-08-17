@@ -208,11 +208,22 @@ function update(this: Phaser.Scene) {
 // --------------------------------------------------------------
 const MANCER_CONTRACT_ADDRESS = import.meta.env.VITE_MANCER_CONTRACT_ADDRESS;
 const ROBINHOOD_RPC_URL = import.meta.env.VITE_ROBINHOOD_RPC_URL; // set in .env
+// Mancer is ERC721-C (usually NOT ERC721Enumerable), so we can't rely on
+// tokenOfOwnerByIndex. We enumerate via Transfer events to the wallet and
+// confirm current ownership with ownerOf.
 const MANCER_ABI = [
   "function balanceOf(address) view returns (uint256)",
+  "function ownerOf(uint256 tokenId) view returns (address)",
+  "function tokenURI(uint256 tokenId) view returns (string)",
   "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
-  "function tokenURI(uint256 tokenId) view returns (string)"
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
 ];
+
+// Optional: first block to scan for Transfer logs (the contract's deploy block).
+// Setting VITE_MANCER_START_BLOCK makes the scan fast; default 0 scans from genesis.
+const MANCER_START_BLOCK = Number(import.meta.env.VITE_MANCER_START_BLOCK ?? 0) || 0;
+const LOG_CHUNK = 50000;
+const MAX_CHUNKS = 400;
 
 const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
 function ipfsToHttp(uri?: string): string {
@@ -223,30 +234,70 @@ function ipfsToHttp(uri?: string): string {
 
 interface OwnedMancer { tokenId: string; name?: string; image?: string; }
 
+/** Candidate token ids ever received by `address`, via Transfer(to=address) logs. */
+async function receivedTokenIds(
+  contract: any,
+  provider: ethers.JsonRpcProvider,
+  address: string,
+): Promise<string[]> {
+  const filter = contract.filters.Transfer(null, address);
+  // Try a single full-range query first (works when the RPC allows it).
+  try {
+    const evs = await contract.queryFilter(filter, MANCER_START_BLOCK, 'latest');
+    return Array.from(new Set(evs.map((e: any) => e.args.tokenId.toString())));
+  } catch {
+    // Fall back to chunked scanning for RPCs that cap the block range.
+    const latest = await provider.getBlockNumber();
+    const ids = new Set<string>();
+    let from = MANCER_START_BLOCK;
+    for (let n = 0; from <= latest && n < MAX_CHUNKS; n++) {
+      const to = Math.min(from + LOG_CHUNK - 1, latest);
+      try {
+        const evs = await contract.queryFilter(filter, from, to);
+        for (const e of evs) ids.add((e as any).args.tokenId.toString());
+      } catch { /* skip a bad range */ }
+      from = to + 1;
+    }
+    return Array.from(ids);
+  }
+}
+
 /**
- * List the Mancer NFTs owned by an address via ERC-721 Enumerable
- * (tokenOfOwnerByIndex + tokenURI). Metadata/images resolved through an IPFS
- * gateway when needed. Bounded to `max` tokens.
+ * List the Mancer NFTs currently owned by an address. Tries ERC-721 Enumerable
+ * first (cheap when supported), otherwise scans Transfer logs and verifies with
+ * ownerOf. Resolves metadata/images through an IPFS gateway. Bounded to `max`.
  */
-async function fetchOwnedMancers(address: string, max = 24): Promise<OwnedMancer[]> {
+async function fetchOwnedMancers(address: string, max = 48): Promise<OwnedMancer[]> {
   const provider = new ethers.JsonRpcProvider(ROBINHOOD_RPC_URL);
   const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
-  const bal: bigint = await contract.balanceOf(address);
-  const count = Math.min(Number(bal), max);
-  const out: OwnedMancer[] = [];
-  for (let i = 0; i < count; i++) {
-    let tokenId: bigint;
-    try {
-      tokenId = await contract.tokenOfOwnerByIndex(address, i);
-    } catch (e) {
-      // Contract is likely not ERC-721 Enumerable — stop here.
-      console.warn('tokenOfOwnerByIndex failed (not enumerable?)', e);
-      break;
+
+  // 1) Determine the owned token ids.
+  let ids: string[] = [];
+  try {
+    const bal: number = Number(await contract.balanceOf(address));
+    for (let i = 0; i < Math.min(bal, max); i++) {
+      ids.push((await contract.tokenOfOwnerByIndex(address, i)).toString());
     }
-    const idStr = tokenId.toString();
+  } catch {
+    // Not enumerable (expected for ERC721-C) — use event scan + ownerOf.
+    const candidates = await receivedTokenIds(contract, provider, address);
+    const owned: string[] = [];
+    for (const id of candidates) {
+      if (owned.length >= max) break;
+      try {
+        const owner: string = await contract.ownerOf(id);
+        if (owner.toLowerCase() === address.toLowerCase()) owned.push(id);
+      } catch { /* burned / moved — skip */ }
+    }
+    ids = owned;
+  }
+
+  // 2) Resolve metadata/images.
+  const out: OwnedMancer[] = [];
+  for (const idStr of ids) {
     const m: OwnedMancer = { tokenId: idStr };
     try {
-      const uri = ipfsToHttp(await contract.tokenURI(tokenId));
+      const uri = ipfsToHttp(await contract.tokenURI(idStr));
       const meta = await fetch(uri).then(r => (r.ok ? r.json() : null));
       if (meta) { m.name = meta.name; m.image = ipfsToHttp(meta.image); }
     } catch { /* metadata unavailable — show a placeholder */ }
@@ -473,11 +524,11 @@ export default function App() {
     fetchOwnedMancers(walletAddress)
       .then(list => {
         setMancers(list);
-        if (list.length === 0) setMancersError('No Mancers found for this wallet (or the contract is not enumerable).');
+        if (list.length === 0) setMancersError('No Mancers found for this wallet.');
       })
       .catch(err => {
         console.error('Failed to load Mancers:', err);
-        setMancersError('Could not load your Mancers. Check the Mancer contract / RPC config.');
+        setMancersError('Could not load your Mancers. Check the Mancer contract / RPC config (and set VITE_MANCER_START_BLOCK to the deploy block to speed up the scan).');
       })
       .finally(() => setMancersLoading(false));
   };
