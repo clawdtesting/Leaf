@@ -639,12 +639,12 @@ export default function App() {
             />
 
             <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>What should be done?</label>
-            <textarea
+            <input
+              type="text"
               value={intakeDetails}
               onChange={e => setIntakeDetails(e.target.value)}
               placeholder={intakeBuilding.details}
-              rows={4}
-              style={{ width: '100%', padding: '8px', fontSize: 14, marginBottom: 16, boxSizing: 'border-box', resize: 'vertical' }}
+              style={{ width: '100%', padding: '8px', fontSize: 14, marginBottom: 16, boxSizing: 'border-box' }}
             />
 
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
