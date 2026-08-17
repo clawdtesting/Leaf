@@ -70,7 +70,17 @@ function preload(this: Phaser.Scene) {
   this.load.image('grassfloor', '/assets/grass2.png');
   BUILDINGS.forEach(b => this.load.image(b.key, `/assets/${b.key}.png`));
   DECOR_KEYS.forEach(k => this.load.image(k, `/assets/${k}.png`));
-  this.load.spritesheet('leaf', '/assets/leaf.png', { frameWidth: LEAF_FRAME, frameHeight: LEAF_FRAME });
+  // Character sheet = chosen Mancer's walk-sheet (falls back to Leaf if the
+  // Mancer sheet is missing / fails to load).
+  this.load.spritesheet('leaf', CHARACTER_SHEET, { frameWidth: LEAF_FRAME, frameHeight: LEAF_FRAME });
+  this.load.once('loaderror', (file: any) => {
+    if (file?.key === 'leaf' && CHARACTER_SHEET !== '/assets/leaf.png') {
+      console.warn(`Character sheet ${CHARACTER_SHEET} failed to load; using Leaf.`);
+      CHARACTER_SHEET = '/assets/leaf.png';
+      this.load.spritesheet('leaf', CHARACTER_SHEET, { frameWidth: LEAF_FRAME, frameHeight: LEAF_FRAME });
+      this.load.start();
+    }
+  });
 }
 
 function create(this: Phaser.Scene) {
@@ -199,8 +209,55 @@ function update(this: Phaser.Scene) {
 const MANCER_CONTRACT_ADDRESS = import.meta.env.VITE_MANCER_CONTRACT_ADDRESS;
 const ROBINHOOD_RPC_URL = import.meta.env.VITE_ROBINHOOD_RPC_URL; // set in .env
 const MANCER_ABI = [
-  "function balanceOf(address) view returns (uint256)"
+  "function balanceOf(address) view returns (uint256)",
+  "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
+  "function tokenURI(uint256 tokenId) view returns (string)"
 ];
+
+const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
+function ipfsToHttp(uri?: string): string {
+  if (!uri) return '';
+  if (uri.startsWith('ipfs://')) return IPFS_GATEWAY + uri.replace(/^ipfs:\/\/(ipfs\/)?/, '');
+  return uri;
+}
+
+interface OwnedMancer { tokenId: string; name?: string; image?: string; }
+
+/**
+ * List the Mancer NFTs owned by an address via ERC-721 Enumerable
+ * (tokenOfOwnerByIndex + tokenURI). Metadata/images resolved through an IPFS
+ * gateway when needed. Bounded to `max` tokens.
+ */
+async function fetchOwnedMancers(address: string, max = 24): Promise<OwnedMancer[]> {
+  const provider = new ethers.JsonRpcProvider(ROBINHOOD_RPC_URL);
+  const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
+  const bal: bigint = await contract.balanceOf(address);
+  const count = Math.min(Number(bal), max);
+  const out: OwnedMancer[] = [];
+  for (let i = 0; i < count; i++) {
+    let tokenId: bigint;
+    try {
+      tokenId = await contract.tokenOfOwnerByIndex(address, i);
+    } catch (e) {
+      // Contract is likely not ERC-721 Enumerable — stop here.
+      console.warn('tokenOfOwnerByIndex failed (not enumerable?)', e);
+      break;
+    }
+    const idStr = tokenId.toString();
+    const m: OwnedMancer = { tokenId: idStr };
+    try {
+      const uri = ipfsToHttp(await contract.tokenURI(tokenId));
+      const meta = await fetch(uri).then(r => (r.ok ? r.json() : null));
+      if (meta) { m.name = meta.name; m.image = ipfsToHttp(meta.image); }
+    } catch { /* metadata unavailable — show a placeholder */ }
+    out.push(m);
+  }
+  return out;
+}
+
+// The character's walk-sheet URL (same 3x4/64px format as leaf.png). Set when a
+// Mancer is chosen; the game reloads with it under the same 'leaf' texture key.
+let CHARACTER_SHEET = '/assets/leaf.png';
 
 async function getProvider() {
   if (typeof window.ethereum !== 'undefined') {
@@ -315,6 +372,14 @@ export default function App() {
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
   const [bundleArtifacts, setBundleArtifacts] = useState<any[] | null>(null);
 
+  // ----- Character (Mancer) selection -----
+  const [mancers, setMancers] = useState<OwnedMancer[]>([]);
+  const [mancersLoading, setMancersLoading] = useState(false);
+  const [mancersError, setMancersError] = useState<string | null>(null);
+  const [characterOpen, setCharacterOpen] = useState(false);
+  const [selectedMancer, setSelectedMancer] = useState<OwnedMancer | null>(null);
+  const [characterVersion, setCharacterVersion] = useState(0); // bump to reload the game with a new sheet
+
   // ----- Wallet / Auth state -----
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [walletConnected, setWalletConnected] = useState(false);
@@ -370,7 +435,7 @@ export default function App() {
       delete window.openIntake;
       delete window.phaserGame;
     };
-  }, []);
+  }, [characterVersion]);
 
   // Open the Evidence Vault, loading quest history from the backend so it shows
   // persisted quests (not just this session's).
@@ -397,6 +462,32 @@ export default function App() {
     }
     const a = bundleArtifacts.find((x: any) => x.path === artifactPath);
     setArtifactContent(a?.content ?? a?.note ?? 'Artifact not found in the published bundle.');
+  };
+
+  // Open the character card and load the wallet's Mancers.
+  const openCharacterCard = () => {
+    setCharacterOpen(true);
+    if (!walletAddress) return;
+    setMancersLoading(true);
+    setMancersError(null);
+    fetchOwnedMancers(walletAddress)
+      .then(list => {
+        setMancers(list);
+        if (list.length === 0) setMancersError('No Mancers found for this wallet (or the contract is not enumerable).');
+      })
+      .catch(err => {
+        console.error('Failed to load Mancers:', err);
+        setMancersError('Could not load your Mancers. Check the Mancer contract / RPC config.');
+      })
+      .finally(() => setMancersLoading(false));
+  };
+
+  // Pick a Mancer as the character: load its walk-sheet and reload the game.
+  const chooseCharacter = (m: OwnedMancer) => {
+    setSelectedMancer(m);
+    CHARACTER_SHEET = `/assets/mancers/${m.tokenId}.png`;
+    setCharacterVersion(v => v + 1);
+    setCharacterOpen(false);
   };
 
   // Dispatch the player-authored mission as a structured intent.
@@ -646,13 +737,21 @@ export default function App() {
         )}
       </div>
 
-      {/* ==== Evidence Vault open button ==== */}
-      <button
-        onClick={openVault}
-        style={{ position: 'fixed', left: 12, top: 12, zIndex: 900, padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
-      >
-        📜 Evidence Vault
-      </button>
+      {/* ==== Top-left action buttons ==== */}
+      <div style={{ position: 'fixed', left: 12, top: 12, zIndex: 900, display: 'flex', gap: 8 }}>
+        <button
+          onClick={openVault}
+          style={{ padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
+        >
+          📜 Evidence Vault
+        </button>
+        <button
+          onClick={openCharacterCard}
+          style={{ padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
+        >
+          🧙 {selectedMancer ? `Mancer #${selectedMancer.tokenId}` : 'Choose Character'}
+        </button>
+      </div>
 
       {/* ==== Main game canvas ==== */}
       <div id="game-container" style={{ width: '100%', maxWidth: 800, margin: '0 auto' }}></div>
@@ -671,6 +770,61 @@ export default function App() {
           if (window.setJobId) window.setJobId(null);
         }}
       />
+
+      {/* ==== Character selection card (pick your Mancer) ==== */}
+      {characterOpen && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}
+          onClick={() => setCharacterOpen(false)}
+        >
+          <div
+            style={{ background: '#1e1230', color: '#fff', padding: '24px', borderRadius: '8px', width: '560px', maxWidth: '94%', maxHeight: '86vh', overflowY: 'auto', fontFamily: 'sans-serif' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 style={{ marginTop: 0 }}>Choose your character</h2>
+            <p style={{ color: '#b9a7e0', fontSize: 13, marginTop: 0 }}>
+              Pick one of your Mancer NFTs. It becomes your in-game character.
+            </p>
+
+            {!walletAddress ? (
+              <p>Connect your wallet to see your Mancers.</p>
+            ) : mancersLoading ? (
+              <p>Loading your Mancers…</p>
+            ) : mancersError ? (
+              <p style={{ color: '#f4a' }}>{mancersError}</p>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 12 }}>
+                {mancers.map(m => {
+                  const active = selectedMancer?.tokenId === m.tokenId;
+                  return (
+                    <button
+                      key={m.tokenId}
+                      onClick={() => chooseCharacter(m)}
+                      style={{
+                        background: active ? '#4a327a' : '#2a1f40',
+                        border: active ? '2px solid #b98cff' : '2px solid transparent',
+                        borderRadius: 8, padding: 8, cursor: 'pointer', color: '#fff', textAlign: 'center',
+                      }}
+                    >
+                      {m.image ? (
+                        <img src={m.image} alt={m.name || m.tokenId} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 6, imageRendering: 'pixelated' }} />
+                      ) : (
+                        <div style={{ width: '100%', aspectRatio: '1 / 1', background: '#000', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#888' }}>no image</div>
+                      )}
+                      <div style={{ fontSize: 12, marginTop: 6 }}>{m.name || `Mancer #${m.tokenId}`}</div>
+                      <div style={{ fontSize: 10, color: '#9a86c8' }}>#{m.tokenId}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button onClick={() => setCharacterOpen(false)} style={{ padding: '8px 16px' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==== Mission Intake (ask the player what they want) ==== */}
       {intakeBuilding && (
