@@ -3,11 +3,10 @@ import * as dotenv from 'dotenv';
 import { z } from 'zod';
 import path from 'path';
 import { ACTIONS, getAction, listActions } from './capabilities';
-import fs from 'fs';
 import { createMission, getMission, listMissions, mockPublishDocketToIpfs, publishDocketToIpfs } from './emperor';
 import { protocolStatus, readNextJobId, readJobSnapshot } from './protocol/read';
 import { getIpfsConfig } from './ipfs/config';
-import { getSanitizedHermesConfigSummary, getHermesWorkspaceRoot } from './agents/hermes/config';
+import { getSanitizedHermesConfigSummary } from './agents/hermes/config';
 import { buildCompletionUnsignedTx, getUnsignedTx } from './tx/build';
 import { verifyCompletionOutcome } from './tx/outcome/verify';
 import type { ContractId } from './tx/types';
@@ -136,30 +135,9 @@ app.get('/jobs', (req, res) => {
   res.json({ jobs });
 });
 
-// Serve a Hermes artifact's content by path (local read; path-confined, and
-// owner-scoped). For multi-user the shareable copy is the IPFS bundle — this is
-// a local convenience for reading an individual artifact file in-game.
-app.get('/job/:id/artifact', (req, res) => {
-  const mission = getMission(req.params.id);
-  if (!mission) return res.status(404).json({ error: 'Job not found' });
-  const requester = walletOf(req);
-  if (mission.userId !== undefined && mission.userId !== requester) {
-    return res.status(404).json({ error: 'Job not found' });
-  }
-  const rel = String(req.query.path || '');
-  if (!rel || rel.includes('..') || rel.includes('~') || rel.startsWith('/')) {
-    return res.status(400).json({ error: 'Invalid artifact path' });
-  }
-  const base = path.resolve(getHermesWorkspaceRoot(), req.params.id);
-  const full = path.resolve(base, rel);
-  if (full !== base && !full.startsWith(base + path.sep)) {
-    return res.status(400).json({ error: 'Path traversal blocked' });
-  }
-  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
-    return res.status(404).json({ error: 'Artifact not found' });
-  }
-  res.type('text/plain').send(fs.readFileSync(full, 'utf-8'));
-});
+// NOTE: artifact contents are no longer served from the local workspace. They
+// are embedded in the IPFS evidence bundle at publish time, so the frontend
+// reads every output from IPFS by CID — nothing is read from any local disk.
 
 // Mission status + proof record (evidence, validation, docket, plan, log).
 app.get('/job/:id/status', (req, res) => {

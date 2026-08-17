@@ -313,6 +313,7 @@ export default function App() {
   // ----- Evidence artifact viewer (read a produced file in the Vault) -----
   const [artifactName, setArtifactName] = useState<string | null>(null);
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
+  const [bundleArtifacts, setBundleArtifacts] = useState<any[] | null>(null);
 
   // ----- Wallet / Auth state -----
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -386,16 +387,16 @@ export default function App() {
       .catch(err => console.error('Failed to load quest history:', err));
   };
 
-  // Fetch and show a single evidence artifact's content.
-  const viewArtifact = (jobId: string, artifactPath: string) => {
+  // Show an evidence artifact's content — read from the IPFS bundle (nothing
+  // local). The bundle is fetched by CID when the quest is opened.
+  const viewArtifact = (artifactPath: string) => {
     setArtifactName(artifactPath);
-    setArtifactContent('Loading…');
-    fetch(`http://localhost:3001/job/${jobId}/artifact?path=${encodeURIComponent(artifactPath)}`, {
-      headers: walletAddress ? { 'x-wallet-address': walletAddress } : {},
-    })
-      .then(r => (r.ok ? r.text() : Promise.reject(`HTTP ${r.status}`)))
-      .then(t => setArtifactContent(t))
-      .catch(e => setArtifactContent(`Could not load artifact: ${e}`));
+    if (!bundleArtifacts) {
+      setArtifactContent('Outputs are only viewable once the evidence is published to IPFS.');
+      return;
+    }
+    const a = bundleArtifacts.find((x: any) => x.path === artifactPath);
+    setArtifactContent(a?.content ?? a?.note ?? 'Artifact not found in the published bundle.');
   };
 
   // Dispatch the player-authored mission as a structured intent.
@@ -455,6 +456,7 @@ export default function App() {
   useEffect(() => {
     setArtifactName(null);
     setArtifactContent(null);
+    setBundleArtifacts(null);
     if (!selectedQuestId) {
       setQuestData(null);
       return;
@@ -467,6 +469,16 @@ export default function App() {
         if (!resp.ok) throw new Error('Failed to fetch quest');
         const data = await resp.json();
         setQuestData(data);
+        // Pull the produced outputs from IPFS (content-addressed, nothing local).
+        const cid = data?.docket?.ipfs_cid;
+        if (cid) {
+          fetch(`https://gateway.pinata.cloud/ipfs/${cid}`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(bundle => setBundleArtifacts(Array.isArray(bundle?.artifacts) ? bundle.artifacts : []))
+            .catch(() => setBundleArtifacts([]));
+        } else {
+          setBundleArtifacts(null);
+        }
       })
       .catch(err => {
         console.error('Error fetching quest:', err);
@@ -802,7 +814,7 @@ export default function App() {
                               <span style={{ color: '#b9a7e0' }}>[{e.type}]</span> {e.summary}
                               {e.ref && String(e.ref).startsWith('output/') && (
                                 <button
-                                  onClick={() => viewArtifact(selectedQuestId!, e.ref)}
+                                  onClick={() => viewArtifact(e.ref)}
                                   style={{ marginLeft: 8, fontSize: 12, cursor: 'pointer', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px' }}
                                 >
                                   view file

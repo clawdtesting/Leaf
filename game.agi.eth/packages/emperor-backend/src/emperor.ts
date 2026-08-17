@@ -9,13 +9,49 @@
 // so a real GoalOS / AGIJobManager / agent executor can be dropped into
 // `runExecutor` without changing the lifecycle or API.
 
+import fs from 'fs';
+import path from 'path';
 import { ActionDef, getAction } from './capabilities';
 import { sha256Json, validateEvidenceDocket, type EvidenceDocket } from './evidence';
 import { readNextJobId } from './protocol/read';
 import { publishAndVerify, type PublishResult } from './ipfs/pin';
 import { hermesEnabled, runViaHermes } from './agents/hermes/executor';
-import { getHermesConfig } from './agents/hermes/config';
+import { getHermesConfig, getHermesWorkspaceRoot } from './agents/hermes/config';
 import { MissionPersistence } from './persistence';
+
+// Max bytes of a single artifact to embed inline in the IPFS bundle.
+const MAX_EMBED_BYTES = 64 * 1024;
+
+/**
+ * Read the mission's produced artifact files from the local Hermes workspace so
+ * their CONTENT can be embedded in the IPFS bundle. This is the only place the
+ * server touches those files — after publishing, every output is viewable from
+ * IPFS by CID, with nothing read from any local workspace.
+ */
+export function collectArtifactContents(
+  mission: MissionRecord,
+): Array<{ path: string; content?: string; note?: string; size?: number }> {
+  const out: Array<{ path: string; content?: string; note?: string; size?: number }> = [];
+  const base = path.resolve(getHermesWorkspaceRoot(), mission.id);
+  for (const ev of mission.evidence) {
+    const ref = ev.ref;
+    if (!ref || !ref.startsWith('output/')) continue;
+    const full = path.resolve(base, ref);
+    if (full !== base && !full.startsWith(base + path.sep)) continue; // confinement
+    try {
+      const st = fs.statSync(full);
+      if (!st.isFile()) continue;
+      if (st.size > MAX_EMBED_BYTES) {
+        out.push({ path: ref, note: 'omitted: exceeds embed size limit', size: st.size });
+      } else {
+        out.push({ path: ref, content: fs.readFileSync(full, 'utf-8') });
+      }
+    } catch {
+      /* file missing / unreadable — skip */
+    }
+  }
+  return out;
+}
 
 export interface EvidenceItem {
   type: string;
@@ -88,6 +124,8 @@ export async function publishDocketToIpfs(mission: MissionRecord): Promise<Publi
     content_hash: d.content_hash,
     intent: mission.intent,
     result: mission.result,
+    // Embed the actual produced files so outputs are viewable straight from IPFS.
+    artifacts: collectArtifactContents(mission),
     evidence: mission.evidence,
     validation: mission.validation,
   };
