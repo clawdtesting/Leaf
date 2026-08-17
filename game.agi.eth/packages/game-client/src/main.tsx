@@ -352,11 +352,13 @@ export default function App() {
       setIntakeTarget(b.target);
       setIntakeDetails(b.details);
     };
+    window.phaserGame = game;
     return () => {
       game.destroy(true);
       delete window.setQuestInProgress;
       delete window.setJobId;
       delete window.openIntake;
+      delete window.phaserGame;
     };
   }, []);
 
@@ -371,6 +373,12 @@ export default function App() {
       },
       walletAddress,
     );
+    // Resume outside scene and stop interior
+    const game = window.phaserGame;
+    if (game && intakeBuilding) {
+      game.scene.stop(`Interior-${intakeBuilding.key}`);
+      game.scene.resume('outside');
+    }
     setIntakeBuilding(null);
   };
 
