@@ -238,14 +238,18 @@ async function verifySignature(address: string, signature: string): Promise<bool
 /** Check Mancer NFT ownership (read‑only, no wallet needed beyond address) */
 async function isMancerHolder(address: string): Promise<boolean> {
   try {
+    console.log('[Mancer check] RPC URL:', ROBINHOOD_RPC_URL);
+    console.log('[Mancer check] Contract address:', MANCER_CONTRACT_ADDRESS);
+    console.log('[Mancer check] Querying balance for:', address);
     const provider = new ethers.JsonRpcProvider(ROBINHOOD_RPC_URL);
     const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
     const bal = await contract.balanceOf(address);
+    console.log('[Mancer check] Balance returned:', bal.toString());
     return bal.gt(0);
   } catch (e) {
     console.warn('Mancer check failed', e);
     return false; // fail‑closed
-}
+  }
 }
 async function mintEnsSubdomain(label: string): Promise<{ txHash?: string }> {
   const resp = await fetch('http://localhost:3001/ens/mint', {
