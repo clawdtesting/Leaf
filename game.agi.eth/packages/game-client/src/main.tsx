@@ -245,7 +245,8 @@ async function isMancerHolder(address: string): Promise<boolean> {
     const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
     const bal = await contract.balanceOf(address);
     console.log('[Mancer check] Balance returned:', bal.toString());
-    return bal.gt(0);
+    // In ethers v6, balanceOf returns a bigint
+    return bal > 0n;
   } catch (e) {
     console.warn('Mancer check failed', e);
     return false; // fail‑closed
