@@ -65,6 +65,11 @@ export function getMission(id: string): MissionRecord | undefined {
   return missions.getMission(id);
 }
 
+/** All missions, newest first (for the in-game Quest Record / Evidence Vault). */
+export function listMissions(): MissionRecord[] {
+  return missions.getAll().sort((a, b) => b.createdAt - a.createdAt);
+}
+
 /**
  * Real IPFS publication: pin the evidence bundle to IPFS (Pinata) and verify it
  * by fetching it back and matching hashes. On success, records the CID and the

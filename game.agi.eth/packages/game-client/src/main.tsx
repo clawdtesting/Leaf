@@ -310,6 +310,10 @@ export default function App() {
   const [intakeTarget, setIntakeTarget] = useState('');
   const [intakeDetails, setIntakeDetails] = useState('');
 
+  // ----- Evidence artifact viewer (read a produced file in the Vault) -----
+  const [artifactName, setArtifactName] = useState<string | null>(null);
+  const [artifactContent, setArtifactContent] = useState<string | null>(null);
+
   // ----- Wallet / Auth state -----
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [walletConnected, setWalletConnected] = useState(false);
@@ -367,6 +371,33 @@ export default function App() {
     };
   }, []);
 
+  // Open the Evidence Vault, loading quest history from the backend so it shows
+  // persisted quests (not just this session's).
+  const openVault = () => {
+    setVaultOpen(true);
+    fetch('http://localhost:3001/jobs', {
+      headers: walletAddress ? { 'x-wallet-address': walletAddress } : {},
+    })
+      .then(r => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
+      .then((d: any) => {
+        const ids = (d.jobs || []).filter((j: any) => j.status === 'completed').map((j: any) => j.jobId);
+        if (ids.length) setCompletedQuestIds(ids);
+      })
+      .catch(err => console.error('Failed to load quest history:', err));
+  };
+
+  // Fetch and show a single evidence artifact's content.
+  const viewArtifact = (jobId: string, artifactPath: string) => {
+    setArtifactName(artifactPath);
+    setArtifactContent('Loading…');
+    fetch(`http://localhost:3001/job/${jobId}/artifact?path=${encodeURIComponent(artifactPath)}`, {
+      headers: walletAddress ? { 'x-wallet-address': walletAddress } : {},
+    })
+      .then(r => (r.ok ? r.text() : Promise.reject(`HTTP ${r.status}`)))
+      .then(t => setArtifactContent(t))
+      .catch(e => setArtifactContent(`Could not load artifact: ${e}`));
+  };
+
   // Dispatch the player-authored mission as a structured intent.
   const dispatchMission = () => {
     if (!intakeBuilding) return;
@@ -422,6 +453,8 @@ export default function App() {
 
   // ----- Fetch quest details for Vault viewer -----
   useEffect(() => {
+    setArtifactName(null);
+    setArtifactContent(null);
     if (!selectedQuestId) {
       setQuestData(null);
       return;
@@ -601,6 +634,14 @@ export default function App() {
         )}
       </div>
 
+      {/* ==== Evidence Vault open button ==== */}
+      <button
+        onClick={openVault}
+        style={{ position: 'fixed', left: 12, top: 12, zIndex: 900, padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
+      >
+        📜 Evidence Vault
+      </button>
+
       {/* ==== Main game canvas ==== */}
       <div id="game-container" style={{ width: '100%', maxWidth: 800, margin: '0 auto' }}></div>
 
@@ -751,6 +792,37 @@ export default function App() {
                         )}
                       </>
                     )}
+                    {/* Evidence — the artifacts the mission produced */}
+                    {questData.evidence && questData.evidence.length > 0 && (
+                      <div style={{ marginTop: 16 }}>
+                        <h4 style={{ marginBottom: 8 }}>Evidence ({questData.evidence.length})</h4>
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                          {questData.evidence.map((e: any, i: number) => (
+                            <li key={i} style={{ padding: '6px 0', borderBottom: '1px solid #2a1f40', fontSize: 13 }}>
+                              <span style={{ color: '#b9a7e0' }}>[{e.type}]</span> {e.summary}
+                              {e.ref && String(e.ref).startsWith('output/') && (
+                                <button
+                                  onClick={() => viewArtifact(selectedQuestId!, e.ref)}
+                                  style={{ marginLeft: 8, fontSize: 12, cursor: 'pointer', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px' }}
+                                >
+                                  view file
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                        {artifactName && (
+                          <div style={{ marginTop: 10 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <strong style={{ fontSize: 12 }}>{artifactName}</strong>
+                              <button onClick={() => { setArtifactName(null); setArtifactContent(null); }} style={{ fontSize: 11 }}>close</button>
+                            </div>
+                            <pre style={{ background: '#000', padding: 12, overflow: 'auto', maxHeight: 200, fontSize: 12, whiteSpace: 'pre-wrap' }}>{artifactContent}</pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* ENS claim section – only show if user is verified & holder */}
                     {authenticated && mancerHolder && (
                       <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #444' }}>

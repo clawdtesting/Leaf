@@ -3,10 +3,11 @@ import * as dotenv from 'dotenv';
 import { z } from 'zod';
 import path from 'path';
 import { ACTIONS, getAction, listActions } from './capabilities';
-import { createMission, getMission, mockPublishDocketToIpfs, publishDocketToIpfs } from './emperor';
+import fs from 'fs';
+import { createMission, getMission, listMissions, mockPublishDocketToIpfs, publishDocketToIpfs } from './emperor';
 import { protocolStatus, readNextJobId, readJobSnapshot } from './protocol/read';
 import { getIpfsConfig } from './ipfs/config';
-import { getSanitizedHermesConfigSummary } from './agents/hermes/config';
+import { getSanitizedHermesConfigSummary, getHermesWorkspaceRoot } from './agents/hermes/config';
 import { buildCompletionUnsignedTx, getUnsignedTx } from './tx/build';
 import { verifyCompletionOutcome } from './tx/outcome/verify';
 import type { ContractId } from './tx/types';
@@ -18,6 +19,13 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const app = express();
 app.use(express.json());
+
+// A header value can be string | string[] | undefined; normalize to the wallet
+// address string used for per-user scoping.
+function walletOf(req: express.Request): string | undefined {
+  const h = req.headers['x-wallet-address'] ?? req.headers['wallet-address'];
+  return Array.isArray(h) ? h[0] : h;
+}
 // Nonce storage for auth challenge
 const nonces = new Map(); // key: ip, value: { nonce: string, expiry: number }
 const NONCE_EXPIRY_MS = 2 * 60 * 1000; // 2 minutes
@@ -91,8 +99,7 @@ app.post('/intent', async (req, res) => {
     }
 
     // Emperor accepts the intent and runs the staged mission.
-    const userId = req.headers['x-wallet-address'] || req.headers['wallet-address'] || undefined;
-    const mission = createMission(intent, userId);
+    const mission = createMission(intent, walletOf(req));
     console.log(`Intent accepted: ${def.action} -> ${def.capability} (${def.route}) as job ${mission.id}`);
 
     res.status(202).json({
@@ -109,6 +116,49 @@ app.post('/intent', async (req, res) => {
     console.error('Error processing intent:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// Quest Record list — recent missions for the in-game Evidence Vault.
+// Scoped: anonymous missions are visible to all; owned missions only to owner.
+app.get('/jobs', (req, res) => {
+  const requester = walletOf(req);
+  const jobs = listMissions()
+    .filter(m => m.userId === undefined || m.userId === requester)
+    .map(m => ({
+      jobId: m.id,
+      status: m.status,
+      capability: m.capability,
+      building: m.building,
+      target: m.intent.target,
+      ipfs_cid: m.docket?.ipfs_cid,
+      createdAt: m.createdAt,
+    }));
+  res.json({ jobs });
+});
+
+// Serve a Hermes artifact's content by path (local read; path-confined, and
+// owner-scoped). For multi-user the shareable copy is the IPFS bundle — this is
+// a local convenience for reading an individual artifact file in-game.
+app.get('/job/:id/artifact', (req, res) => {
+  const mission = getMission(req.params.id);
+  if (!mission) return res.status(404).json({ error: 'Job not found' });
+  const requester = walletOf(req);
+  if (mission.userId !== undefined && mission.userId !== requester) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  const rel = String(req.query.path || '');
+  if (!rel || rel.includes('..') || rel.includes('~') || rel.startsWith('/')) {
+    return res.status(400).json({ error: 'Invalid artifact path' });
+  }
+  const base = path.resolve(getHermesWorkspaceRoot(), req.params.id);
+  const full = path.resolve(base, rel);
+  if (full !== base && !full.startsWith(base + path.sep)) {
+    return res.status(400).json({ error: 'Path traversal blocked' });
+  }
+  if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
+    return res.status(404).json({ error: 'Artifact not found' });
+  }
+  res.type('text/plain').send(fs.readFileSync(full, 'utf-8'));
 });
 
 // Mission status + proof record (evidence, validation, docket, plan, log).

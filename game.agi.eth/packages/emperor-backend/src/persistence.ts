@@ -58,6 +58,11 @@ export class MissionPersistence {
     return Array.from(this.missions.values()).filter(m => m.userId === userId);
   }
 
+  // All missions (for the Quest Record / Evidence Vault listing).
+  getAll(): MissionRecord[] {
+    return Array.from(this.missions.values());
+  }
+
   // Clear all (for testing)
   clear(): void {
     this.missions.clear();
