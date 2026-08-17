@@ -343,18 +343,29 @@ async function verifySignature(address: string, signature: string): Promise<bool
   return !!data.valid; // expect { valid: true }
 }
 
-/** Check Mancer NFT ownership (read‑only, no wallet needed beyond address) */
-async function isMancerHolder(address: string): Promise<boolean> {
+/**
+ * Check Mancer NFT ownership. Returns the balance and a diagnostic instead of
+ * silently failing closed, so config/RPC problems are visible.
+ */
+async function checkMancer(address: string): Promise<{ holder: boolean; balance?: string; error?: string }> {
+  if (!ROBINHOOD_RPC_URL) return { holder: false, error: 'VITE_ROBINHOOD_RPC_URL is not set' };
+  if (!MANCER_CONTRACT_ADDRESS) return { holder: false, error: 'VITE_MANCER_CONTRACT_ADDRESS is not set' };
   try {
-    console.log('[Mancer check] RPC URL:', ROBINHOOD_RPC_URL);
-    console.log('[Mancer check] Contract address:', MANCER_CONTRACT_ADDRESS);
-    console.log('[Mancer check] Querying balance for:', address);
     const provider = new ethers.JsonRpcProvider(ROBINHOOD_RPC_URL);
     const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
-    const bal = await contract.balanceOf(address);
-    console.log('[Mancer check] Balance returned:', bal.toString());
-    // In ethers v6, balanceOf returns a bigint
-    return bal > 0n;
+    const bal: bigint = await contract.balanceOf(address);
+    console.log('[Mancer check]', { rpc: ROBINHOOD_RPC_URL, contract: MANCER_CONTRACT_ADDRESS, address, balance: bal.toString() });
+    return { holder: bal > 0n, balance: bal.toString() };
+  } catch (e: any) {
+    console.warn('Mancer check failed', e);
+    return { holder: false, error: e?.shortMessage || e?.message || String(e) };
+  }
+}
+
+/** Legacy boolean wrapper (kept for callers that only need the boolean). */
+async function isMancerHolder(address: string): Promise<boolean> {
+  try {
+    return (await checkMancer(address)).holder;
   } catch (e) {
     console.warn('Mancer check failed', e);
     return false; // fail‑closed
@@ -437,6 +448,7 @@ export default function App() {
   const [authenticating, setAuthenticating] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [mancerHolder, setMancerHolder] = useState<boolean>(false);
+  const [mancerCheckMsg, setMancerCheckMsg] = useState<string | null>(null);
   const [ensLabel, setEnsLabel] = useState<string>(''); // user‑typed label
   const [ensSubdomain, setEnsSubdomain] = useState<string | null>(null); // e.g. "alice.game.agi.eth"
   const [ensMinting, setEnsMinting] = useState(false);
@@ -649,12 +661,10 @@ export default function App() {
       if (!valid) throw new Error('Signature verification failed');
       setAuthenticated(true);
 
-      // 4️⃣ Check Mancer NFT holder status
-      const holder = await isMancerHolder(address);
-      setMancerHolder(holder);
-      if (!holder) {
-        console.warn('Wallet is not a Mancer NFT holder – quests will be gated.');
-      }
+      // 4️⃣ Check Mancer NFT holder status (with a visible diagnostic)
+      const res = await checkMancer(address);
+      setMancerHolder(res.holder);
+      setMancerCheckMsg(res.error ? `check failed: ${res.error}` : `balance: ${res.balance}`);
     } catch (err) {
       console.error('Wallet connection/auth error:', err);
       setWalletAddress(null);
@@ -672,7 +682,17 @@ export default function App() {
     setWalletConnected(false);
     setAuthenticated(false);
     setMancerHolder(false);
-    // clear any cached quests? optional
+    setMancerCheckMsg(null);
+    setAuthenticating(false); // never leave the Connect button disabled
+  };
+
+  // Manually re-run the Mancer ownership check (useful when config was fixed).
+  const recheckMancer = async () => {
+    if (!walletAddress) return;
+    setMancerCheckMsg('checking…');
+    const res = await checkMancer(walletAddress);
+    setMancerHolder(res.holder);
+    setMancerCheckMsg(res.error ? `check failed: ${res.error}` : `balance: ${res.balance}`);
   };
 
   // ----- ENS minting -----
@@ -762,7 +782,15 @@ export default function App() {
               ) : (
                 <span style={{ color: '#ff9800' }}>⚠ Not a Holder</span>
               )}
+              <button onClick={recheckMancer} style={{ fontSize: '11px', padding: '1px 6px', marginLeft: 6 }}>
+                Re-check
+              </button>
             </div>
+            {mancerCheckMsg && (
+              <div style={{ fontSize: '11px', color: mancerCheckMsg.includes('failed') ? '#f44336' : '#9a86c8' }}>
+                Mancer {mancerCheckMsg}
+              </div>
+            )}
             <button onClick={disconnectWallet} style={{ fontSize: '12px', padding: '2px 6px' }}>
               Disconnect
             </button>
