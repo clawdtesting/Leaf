@@ -39,6 +39,10 @@ const BUILDINGS: BuildingDef[] = [
 // --------------------------------------------------------------
 interface DecorDef { key: string; x: number; y: number; scale: number; solid?: boolean; }
 
+type MapItemKind = 'building' | 'decor';
+interface MapItemPosition { id: string; kind: MapItemKind; key: string; x: number; y: number; }
+const MAP_LAYOUT_STORAGE_KEY = 'game-map-layout-v1';
+
 const DECOR: DecorDef[] = [
   { key: 'big_tree', x: 70, y: 140, scale: 0.55, solid: true },
   { key: 'big_tree', x: 745, y: 400, scale: 0.55, solid: true },
@@ -60,6 +64,29 @@ const DECOR: DecorDef[] = [
 ];
 
 const DECOR_KEYS = Array.from(new Set(DECOR.map(d => d.key)));
+const DEFAULT_MAP_POSITIONS = mapItems().map(item => ({ ...item }));
+
+function mapItems(): MapItemPosition[] {
+  return [
+    ...BUILDINGS.map((item, index) => ({ id: `building-${index}`, kind: 'building' as const, key: item.key, x: item.x, y: item.y })),
+    ...DECOR.map((item, index) => ({ id: `decor-${index}`, kind: 'decor' as const, key: item.key, x: item.x, y: item.y })),
+  ];
+}
+
+function applySavedMapLayout() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MAP_LAYOUT_STORAGE_KEY) || '{}') as Record<string, { x: number; y: number }>;
+    mapItems().forEach(item => {
+      const position = saved[item.id];
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return;
+      const target = item.kind === 'building' ? BUILDINGS[Number(item.id.split('-')[1])] : DECOR[Number(item.id.split('-')[1])];
+      target.x = Phaser.Math.Clamp(position.x, 0, WORLD_WIDTH);
+      target.y = Phaser.Math.Clamp(position.y, 0, WORLD_HEIGHT);
+    });
+  } catch {
+    localStorage.removeItem(MAP_LAYOUT_STORAGE_KEY);
+  }
+}
 
 // --------------------------------------------------------------
 // Outside Scene
@@ -94,32 +121,67 @@ function create(this: Phaser.Scene) {
   const solids = this.physics.add.staticGroup();
 
   // Decorations
-  DECOR.forEach(d => {
+  const editableItems: Record<string, { sprite: Phaser.GameObjects.Image; label?: Phaser.GameObjects.Text }> = {};
+  DECOR.forEach((d, index) => {
     if (d.solid) {
       const s = solids.create(d.x, d.y, d.key) as Phaser.Physics.Arcade.Sprite;
       s.setOrigin(0.5, 1).setScale(d.scale).refreshBody();
       s.setDepth(d.y);
+      editableItems[`decor-${index}`] = { sprite: s };
     } else {
-      this.add.image(d.x, d.y, d.key).setOrigin(0.5, 1).setScale(d.scale).setDepth(d.y);
+      const sprite = this.add.image(d.x, d.y, d.key).setOrigin(0.5, 1).setScale(d.scale).setDepth(d.y);
+      editableItems[`decor-${index}`] = { sprite };
     }
   });
 
   // Building sprites (quest triggers)
   const buildingGroup = this.physics.add.staticGroup();
   const buildingSprites: { def: BuildingDef; sprite: Phaser.GameObjects.Image }[] = [];
-  BUILDINGS.forEach(b => {
+  BUILDINGS.forEach((b, index) => {
     const sprite = buildingGroup.create(b.x, b.y, b.key) as Phaser.Physics.Arcade.Sprite;
     sprite.setOrigin(0.5, 1).setScale(0.55).refreshBody();
     sprite.setDepth(b.y);
     sprite.setInteractive({ useHandCursor: true });
-    sprite.on('pointerdown', () => enterBuilding(scene, b));
-    this.add.text(b.x, b.y - sprite.displayHeight - 6, b.name, {
+    sprite.on('pointerdown', () => {
+      if (!scene.mapConfigMode) enterBuilding(scene, b);
+    });
+    const label = this.add.text(b.x, b.y - sprite.displayHeight - 6, b.name, {
       fontFamily: 'monospace', fontSize: '12px', color: '#ffffff',
       backgroundColor: '#00000080', padding: { x: 4, y: 2 },
     }).setOrigin(0.5).setDepth(10000);
     buildingSprites.push({ def: b, sprite });
+    editableItems[`building-${index}`] = { sprite, label };
   });
   scene.buildingSprites = buildingSprites;
+  scene.editableItems = editableItems;
+
+  Object.entries(editableItems).forEach(([id, item]) => {
+    item.sprite.setInteractive({ useHandCursor: false, draggable: false });
+    item.sprite.on('pointerdown', () => {
+      if (scene.mapConfigMode) window.selectMapItem?.(id);
+    });
+    item.sprite.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+      if (!scene.mapConfigMode) return;
+      window.updateMapItem?.(id, Math.round(dragX), Math.round(dragY));
+    });
+  });
+
+  scene.setMapConfigMode = (enabled: boolean) => {
+    scene.mapConfigMode = enabled;
+    leaf.setVelocity(0, 0);
+    Object.values(editableItems).forEach(item => {
+      this.input.setDraggable(item.sprite, enabled);
+      item.sprite.input!.cursor = enabled ? 'move' : 'pointer';
+    });
+  };
+  scene.updateMapItemPosition = (id: string, x: number, y: number) => {
+    const item = editableItems[id];
+    if (!item) return;
+    item.sprite.setPosition(x, y).setDepth(y);
+    const body = item.sprite.body as Phaser.Physics.Arcade.StaticBody | undefined;
+    body?.updateFromGameObject();
+    if (item.label) item.label.setPosition(x, y - item.sprite.displayHeight - 6);
+  };
 
   // Leaf (player)
   const leaf = this.physics.add.sprite(WORLD_WIDTH / 2, 470, 'leaf');
@@ -170,6 +232,12 @@ function update(this: Phaser.Scene) {
   const leaf = scene.leaf as Phaser.Physics.Arcade.Sprite;
   if (!leaf) return;
   const cursors = scene.cursors as Phaser.Types.Input.Keyboard.CursorKeys;
+
+  if (scene.mapConfigMode) {
+    leaf.setVelocity(0, 0);
+    scene.prompt.setText('CONFIG MODE · drag an object or edit its X / Y values');
+    return;
+  }
 
   let vx = 0, vy = 0;
   if (cursors.left?.isDown) vx = -LEAF_SPEED;
@@ -586,6 +654,12 @@ export default function App() {
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
   const [questLoading, setQuestLoading] = useState<boolean>(false);
   const [questData, setQuestData] = useState<any>(null);
+  const [mapConfigMode, setMapConfigMode] = useState(false);
+  const [mapLayout, setMapLayout] = useState<MapItemPosition[]>(() => {
+    applySavedMapLayout();
+    return mapItems();
+  });
+  const [selectedMapItemId, setSelectedMapItemId] = useState<string | null>(null);
 
   // ----- Mission intake (ask the player what they want) -----
   const [intakeBuilding, setIntakeBuilding] = useState<BuildingDef | null>(null);
@@ -653,15 +727,50 @@ export default function App() {
       setIntakeTarget(b.target);
       setIntakeDetails(b.details);
     };
+    window.selectMapItem = setSelectedMapItemId;
+    window.updateMapItem = updateMapItem;
     window.phaserGame = game;
     return () => {
       game.destroy(true);
       delete window.setQuestInProgress;
       delete window.setJobId;
       delete window.openIntake;
+      delete window.selectMapItem;
+      delete window.updateMapItem;
       delete window.phaserGame;
     };
   }, [characterVersion]);
+
+  const updateMapItem = (id: string, rawX: number, rawY: number) => {
+    const x = Phaser.Math.Clamp(Math.round(rawX), 0, WORLD_WIDTH);
+    const y = Phaser.Math.Clamp(Math.round(rawY), 0, WORLD_HEIGHT);
+    const item = mapItems().find(candidate => candidate.id === id);
+    if (!item) return;
+    const index = Number(id.split('-')[1]);
+    const target = item.kind === 'building' ? BUILDINGS[index] : DECOR[index];
+    target.x = x;
+    target.y = y;
+    const next = mapItems();
+    setMapLayout(next);
+    setSelectedMapItemId(id);
+    localStorage.setItem(MAP_LAYOUT_STORAGE_KEY, JSON.stringify(Object.fromEntries(next.map(entry => [entry.id, { x: entry.x, y: entry.y }]))));
+    (window.phaserGame?.scene.getScene('outside') as any)?.updateMapItemPosition?.(id, x, y);
+  };
+
+  const toggleMapConfigMode = () => {
+    setMapConfigMode(enabled => {
+      const next = !enabled;
+      (window.phaserGame?.scene.getScene('outside') as any)?.setMapConfigMode?.(next);
+      if (!next) setSelectedMapItemId(null);
+      return next;
+    });
+  };
+
+  const resetMapLayout = () => {
+    DEFAULT_MAP_POSITIONS.forEach(item => updateMapItem(item.id, item.x, item.y));
+    localStorage.removeItem(MAP_LAYOUT_STORAGE_KEY);
+    setMapLayout(mapItems());
+  };
 
   // Open the Evidence Vault, loading quest history from the backend so it shows
   // persisted quests (not just this session's).
@@ -913,6 +1022,7 @@ export default function App() {
   };
 
   // ----- Render -----
+  const selectedMapItem = mapLayout.find(item => item.id === selectedMapItemId) ?? null;
   return (
     <div style={{ padding: '1rem', fontFamily: 'sans-serif', position: 'relative', minHeight: '100vh' }}>
       {/* ==== Wallet bar (top‑right) ==== */}
@@ -1015,10 +1125,49 @@ export default function App() {
         >
           🧙 {selectedMancer ? `Mancer #${selectedMancer.tokenId}` : 'Choose Character'}
         </button>
+        <button
+          onClick={toggleMapConfigMode}
+          aria-pressed={mapConfigMode}
+          style={{ padding: '6px 12px', background: mapConfigMode ? '#d97706' : '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
+        >
+          {mapConfigMode ? '✓ Finish Map Editing' : '🗺 Edit Map'}
+        </button>
       </div>
 
       {/* ==== Main game canvas ==== */}
-      <div id="game-container" style={{ width: '100%', maxWidth: 800, margin: '0 auto' }}></div>
+      <div style={{ width: '100%', maxWidth: 800, margin: '0 auto', position: 'relative' }}>
+        <div id="game-container" style={{ width: '100%' }}></div>
+        {mapConfigMode && (
+          <aside style={{ position: 'absolute', top: 12, right: 12, width: 230, maxHeight: 500, overflowY: 'auto', padding: 12, borderRadius: 6, background: '#171026ee', color: '#fff', zIndex: 20, boxShadow: '0 4px 18px #0008', fontFamily: 'monospace' }}>
+            <strong>Map config</strong>
+            <p style={{ margin: '6px 0 10px', color: '#c4b5dd', fontSize: 11 }}>Drag an object, or select it here and enter exact coordinates. Changes save in this browser.</p>
+            <select
+              value={selectedMapItemId ?? ''}
+              onChange={event => setSelectedMapItemId(event.target.value || null)}
+              style={{ width: '100%', marginBottom: 10, padding: 5 }}
+            >
+              <option value="">Select an object…</option>
+              <optgroup label="Buildings">
+                {mapLayout.filter(item => item.kind === 'building').map(item => <option key={item.id} value={item.id}>{item.key} ({item.x}, {item.y})</option>)}
+              </optgroup>
+              <optgroup label="Decorations">
+                {mapLayout.filter(item => item.kind === 'decor').map((item, index) => <option key={item.id} value={item.id}>{index + 1}. {item.key} ({item.x}, {item.y})</option>)}
+              </optgroup>
+            </select>
+            {selectedMapItem && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <label style={{ fontSize: 12 }}>X (0–{WORLD_WIDTH})
+                  <input type="number" min={0} max={WORLD_WIDTH} value={selectedMapItem.x} onChange={event => updateMapItem(selectedMapItem.id, Number(event.target.value), selectedMapItem.y)} style={{ boxSizing: 'border-box', width: '100%', marginTop: 3, padding: 5 }} />
+                </label>
+                <label style={{ fontSize: 12 }}>Y (0–{WORLD_HEIGHT})
+                  <input type="number" min={0} max={WORLD_HEIGHT} value={selectedMapItem.y} onChange={event => updateMapItem(selectedMapItem.id, selectedMapItem.x, Number(event.target.value))} style={{ boxSizing: 'border-box', width: '100%', marginTop: 3, padding: 5 }} />
+                </label>
+              </div>
+            )}
+            <button onClick={resetMapLayout} style={{ width: '100%', marginTop: 12, padding: 5, background: '#4b374f', color: '#fff', border: '1px solid #80638a', borderRadius: 3, cursor: 'pointer' }}>Reset default layout</button>
+          </aside>
+        )}
+      </div>
 
       {/* ==== Quest overlay (existing) ==== */}
       <QuestOverlay
