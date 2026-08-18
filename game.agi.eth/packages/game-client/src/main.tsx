@@ -643,35 +643,57 @@ export default function App() {
 
   // ----- Wallet connection logic -----
   const connectWallet = async () => {
+    setAuthenticating(true);
+    // Phase 1 — connect the wallet. This is the only fatal phase: without an
+    // address there is nothing to do. Getting the address must NOT depend on
+    // the backend or on a signature.
+    let address: string;
+    let provider: ethers.BrowserProvider;
     try {
-      setAuthenticating(true);
-      const provider = await getProvider();
+      provider = await getProvider();
       await window.ethereum?.request({ method: 'eth_requestAccounts' });
       const signer = await provider.getSigner();
-      const address = await signer.getAddress();
+      address = await signer.getAddress();
       setWalletAddress(address);
       setWalletConnected(true);
-
-      // 1️⃣ Get nonce from backend
-      const nonce = await fetchNonce(); // e.g. "0x123abc..."
-      // 2️⃣ Sign it
-      const signature = await signMessage(provider, address, nonce);
-      // 3️⃣ Verify with backend
-      const valid = await verifySignature(address, signature);
-      if (!valid) throw new Error('Signature verification failed');
-      setAuthenticated(true);
-
-      // 4️⃣ Check Mancer NFT holder status (with a visible diagnostic)
-      const res = await checkMancer(address);
-      setMancerHolder(res.holder);
-      setMancerCheckMsg(res.error ? `check failed: ${res.error}` : `balance: ${res.balance}`);
     } catch (err) {
-      console.error('Wallet connection/auth error:', err);
+      console.error('[Wallet] connect failed:', err);
       setWalletAddress(null);
       setWalletConnected(false);
       setAuthenticated(false);
       setMancerHolder(false);
-      // keep authenticating false so user can retry
+      setAuthenticating(false);
+      return;
+    }
+
+    // Phase 2 — Mancer ownership. Runs right after connect, on its own, so it
+    // is never gated by the backend nonce or a signature popup. This is what
+    // drives the character-selection card, so it must always run.
+    try {
+      setMancerCheckMsg('checking…');
+      const res = await checkMancer(address);
+      setMancerHolder(res.holder);
+      setMancerCheckMsg(res.error ? `check failed: ${res.error}` : `balance: ${res.balance}`);
+    } catch (err) {
+      console.warn('[Wallet] Mancer check failed:', err);
+      setMancerHolder(false);
+      setMancerCheckMsg(`check failed: ${(err as any)?.message ?? String(err)}`);
+    }
+
+    // Phase 3 — optional signature auth (SIWE nonce → sign → verify). This
+    // proves control of the address to the backend but is NOT required to play
+    // or to select a character. A stalled backend, a declined popup, or a
+    // verify failure leaves `authenticated=false` without tearing down the
+    // wallet or the Mancer result.
+    try {
+      const nonce = await fetchNonce();
+      const signature = await signMessage(provider, address, nonce);
+      const valid = await verifySignature(address, signature);
+      setAuthenticated(valid);
+      if (!valid) console.warn('[Wallet] signature verification returned false (auth optional)');
+    } catch (err) {
+      console.warn('[Wallet] signature auth skipped/failed (optional):', err);
+      setAuthenticated(false);
     } finally {
       setAuthenticating(false);
     }
