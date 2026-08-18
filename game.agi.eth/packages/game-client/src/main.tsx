@@ -376,10 +376,33 @@ async function fetchViaAlchemyNft(address: string, max = 48): Promise<OwnedMance
  * used only if it returns tokens, so nothing hides a token from a slower but
  * more complete path. Bounded to `max`.
  */
+/**
+ * Replace each Mancer's image with its authoritative per-token art from the
+ * on-chain tokenURI metadata. NFT aggregators (Alchemy/OpenSea) often return a
+ * collection-level image on a newly-indexed chain, so we always prefer the
+ * token's own metadata.image and keep the aggregator image only as a fallback.
+ */
+async function enrichMancerImages(mancers: OwnedMancer[]): Promise<OwnedMancer[]> {
+  if (!ROBINHOOD_RPC_URL || !MANCER_CONTRACT_ADDRESS || mancers.length === 0) return mancers;
+  const provider = new ethers.JsonRpcProvider(ROBINHOOD_RPC_URL);
+  const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
+  await Promise.all(mancers.map(async (m) => {
+    try {
+      const uri = ipfsToHttp(await contract.tokenURI(m.tokenId));
+      if (!uri) return;
+      const meta = await fetch(uri).then((r) => (r.ok ? r.json() : null));
+      if (meta?.image) m.image = ipfsToHttp(meta.image);
+      if (meta?.name) m.name = meta.name;
+      console.log('[Mancers] tokenURI image', m.tokenId, '->', m.image);
+    } catch (e) { console.warn('[Mancers] tokenURI enrich failed for', m.tokenId, e); }
+  }));
+  return mancers;
+}
+
 async function fetchOwnedMancers(address: string, max = 48): Promise<OwnedMancer[]> {
   // 0a) Fastest: Alchemy NFT API (single call, images included, existing key).
   const viaAlchemy = await fetchViaAlchemyNft(address, max);
-  if (viaAlchemy && viaAlchemy.length > 0) return viaAlchemy;
+  if (viaAlchemy && viaAlchemy.length > 0) return enrichMancerImages(viaAlchemy);
 
   // 0b) Fast path: ask the backend's OpenSea proxy (key stays server-side). Use
   // it only when it is configured AND returns tokens; otherwise fall through to
@@ -390,11 +413,11 @@ async function fetchOwnedMancers(address: string, max = 48): Promise<OwnedMancer
     if (resp.ok) {
       const data = await resp.json();
       if (data?.available && Array.isArray(data.mancers) && data.mancers.length > 0) {
-        return data.mancers.slice(0, max).map((m: any): OwnedMancer => ({
+        return enrichMancerImages(data.mancers.slice(0, max).map((m: any): OwnedMancer => ({
           tokenId: String(m.tokenId),
           name: m.name,
           image: ipfsToHttp(m.image),
-        }));
+        })));
       }
     }
   } catch { /* backend/OpenSea unavailable — fall back to on-chain */ }
