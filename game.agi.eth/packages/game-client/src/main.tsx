@@ -5,6 +5,7 @@ import { Game } from 'phaser';
 import { QuestOverlay } from './QuestOverlay';
 import { InteriorScene } from './InteriorScene';
 import { ethers } from 'ethers';
+import './game-ui.css';
 
 // --------------------------------------------------------------
 // Constants & building definitions
@@ -1196,15 +1197,15 @@ export default function App() {
       {/* ==== Character selection card (pick your Mancer) ==== */}
       {characterOpen && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}
+          className="zelda-overlay"
           onClick={() => setCharacterOpen(false)}
         >
           <div
-            style={{ background: '#1e1230', color: '#fff', padding: '24px', borderRadius: '8px', width: '560px', maxWidth: '94%', maxHeight: '86vh', overflowY: 'auto', fontFamily: 'sans-serif' }}
+            className="zelda-card"
             onClick={e => e.stopPropagation()}
           >
-            <h2 style={{ marginTop: 0 }}>Choose your character</h2>
-            <p style={{ color: '#b9a7e0', fontSize: 13, marginTop: 0 }}>
+            <h2>Choose your character</h2>
+            <p className="zelda-muted" style={{ fontSize: 13, marginTop: 0 }}>
               Pick one of your Mancer NFTs. It becomes your in-game character.
             </p>
 
@@ -1221,11 +1222,10 @@ export default function App() {
                   return (
                     <button
                       key={m.tokenId}
+                      className={`zelda-choice${active ? ' zelda-choice--active' : ''}`}
                       onClick={() => chooseCharacter(m)}
                       style={{
-                        background: active ? '#4a327a' : '#2a1f40',
-                        border: active ? '2px solid #b98cff' : '2px solid transparent',
-                        borderRadius: 8, padding: 8, cursor: 'pointer', color: '#fff', textAlign: 'center',
+                        textAlign: 'center',
                       }}
                     >
                       {m.image ? (
@@ -1234,15 +1234,15 @@ export default function App() {
                         <div style={{ width: '100%', aspectRatio: '1 / 1', background: '#000', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#888' }}>no image</div>
                       )}
                       <div style={{ fontSize: 12, marginTop: 6 }}>{m.name || `Mancer #${m.tokenId}`}</div>
-                      <div style={{ fontSize: 10, color: '#9a86c8' }}>#{m.tokenId}</div>
+                      <div style={{ fontSize: 10 }}>#{m.tokenId}</div>
                     </button>
                   );
                 })}
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-              <button onClick={() => setCharacterOpen(false)} style={{ padding: '8px 16px' }}>Close</button>
+            <div className="zelda-actions">
+              <button className="zelda-button" onClick={() => setCharacterOpen(false)}>Close</button>
             </div>
           </div>
         </div>
@@ -1251,42 +1251,42 @@ export default function App() {
       {/* ==== Mission Intake (ask the player what they want) ==== */}
       {intakeBuilding && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}
+          className="zelda-overlay"
           onClick={() => setIntakeBuilding(null)}
         >
           <div
-            style={{ background: '#1e1230', color: '#fff', padding: '24px', borderRadius: '8px', width: '460px', maxWidth: '92%', fontFamily: 'sans-serif' }}
+            className="zelda-card"
             onClick={e => e.stopPropagation()}
           >
-            <h2 style={{ margin: '0 0 4px' }}>{intakeBuilding.name}</h2>
-            <p style={{ margin: '0 0 16px', color: '#b9a7e0', fontSize: 13 }}>
+            <h2>{intakeBuilding.name}</h2>
+            <p className="zelda-muted" style={{ margin: '0 0 16px', fontSize: 13 }}>
               Capability: <code>{intakeBuilding.action}</code>
             </p>
 
-            <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Objective / target</label>
+            <label>Objective / target</label>
             <input
+              className="zelda-input"
               type="text"
               value={intakeTarget}
               onChange={e => setIntakeTarget(e.target.value)}
               placeholder={intakeBuilding.target}
-              style={{ width: '100%', padding: '8px', fontSize: 14, marginBottom: 12, boxSizing: 'border-box' }}
             />
 
-            <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>What should be done?</label>
+            <label>What should be done?</label>
             <input
+              className="zelda-input zelda-input--paper"
               type="text"
               value={intakeDetails}
               onChange={e => setIntakeDetails(e.target.value)}
               placeholder={intakeBuilding.details}
-              style={{ width: '100%', padding: '8px', fontSize: 14, marginBottom: 16, boxSizing: 'border-box' }}
             />
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setIntakeBuilding(null)} style={{ padding: '8px 16px' }}>Cancel</button>
+            <div className="zelda-actions">
+              <button className="zelda-button" onClick={() => setIntakeBuilding(null)}>Cancel</button>
               <button
+                className="zelda-button zelda-button--primary"
                 onClick={dispatchMission}
                 disabled={!intakeTarget.trim()}
-                style={{ padding: '8px 16px', background: '#6a4fb0', color: '#fff', border: 'none', borderRadius: 4, cursor: intakeTarget.trim() ? 'pointer' : 'not-allowed' }}
               >
                 Dispatch Mission
               </button>
@@ -1297,55 +1297,31 @@ export default function App() {
 
       {/* ==== Vault Modal ==== */}
       {vaultOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }} onClick={() => {
+        <div className="zelda-overlay" onClick={() => {
           setVaultOpen(false);
           setSelectedQuestId(null);
           setQuestData(null);
         }}>
-          <div style={{
-            background: '#1e1230',
-            color: '#fff',
-            padding: '24px',
-            borderRadius: '8px',
-            width: '420px',
-            maxWidth: '90%',
-            maxHeight: '85vh',
-            overflowY: 'auto'
-          }} onClick={e => e.stopPropagation()}>
+          <div className="zelda-card" onClick={e => e.stopPropagation()}>
             {!selectedQuestId ? (
               <>
                 <h2>Completed Quests</h2>
                 {completedQuestIds.length === 0 ? (
                   <p>No completed quests yet.</p>
                 ) : (
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  <ul className="zelda-list">
                     {completedQuestIds.map(id => (
-                      <li key={id} style={{ padding: '8px 0', borderBottom: '1px solid #333' }}>
+                      <li key={id}>
                         <button onClick={() => {
                           setSelectedQuestId(id);
-                        }} style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#fff',
-                          textAlign: 'left',
-                          width: '100%',
-                          cursor: 'pointer'
-                        }}>
+                        }} className="zelda-button" style={{ textAlign: 'left', width: '100%' }}>
                           Quest {id}
                         </button>
                       </li>
                     ))}
                   </ul>
                 )}
-                <button onClick={() => setVaultOpen(false)} style={{ marginTop: '16px', padding: '8px 16px' }}>
+                <button className="zelda-button" onClick={() => setVaultOpen(false)} style={{ marginTop: '16px' }}>
                   Close
                 </button>
               </>
@@ -1360,19 +1336,14 @@ export default function App() {
                     {questData.docket && (
                       <>
                         <h4>Docket (IPFS CID: {questData.docket.ipfs_cid})</h4>
-                        <pre style={{
-                          background: '#000',
-                          padding: '12px',
-                          overflow: 'auto',
-                          maxHeight: '220px'
-                        }}>{JSON.stringify(questData.docket, null, 2)}</pre>
+                        <pre className="zelda-pre" style={{ maxHeight: '220px' }}>{JSON.stringify(questData.docket, null, 2)}</pre>
                         {questData.docket.ipfs_cid && (
                           <div style={{ marginTop: '12px' }}>
                             <a
                               href={`https://gateway.pinata.cloud/ipfs/${questData.docket.ipfs_cid}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              style={{ color: '#4fc3f7' }}
+                              style={{ color: '#653486', fontWeight: 700 }}
                             >
                               View Proof on IPFS
                             </a>
@@ -1384,14 +1355,15 @@ export default function App() {
                     {questData.evidence && questData.evidence.length > 0 && (
                       <div style={{ marginTop: 16 }}>
                         <h4 style={{ marginBottom: 8 }}>Evidence ({questData.evidence.length})</h4>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                        <ul className="zelda-list">
                           {questData.evidence.map((e: any, i: number) => (
-                            <li key={i} style={{ padding: '6px 0', borderBottom: '1px solid #2a1f40', fontSize: 13 }}>
-                              <span style={{ color: '#b9a7e0' }}>[{e.type}]</span> {e.summary}
+                            <li key={i} style={{ fontSize: 13 }}>
+                              <span className="zelda-muted">[{e.type}]</span> {e.summary}
                               {e.ref && String(e.ref).startsWith('output/') && (
                                 <button
                                   onClick={() => viewArtifact(e.ref)}
-                                  style={{ marginLeft: 8, fontSize: 12, cursor: 'pointer', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px' }}
+                                  className="zelda-button"
+                                  style={{ marginLeft: 8, fontSize: 12, padding: '2px 8px' }}
                                 >
                                   view file
                                 </button>
@@ -1403,9 +1375,9 @@ export default function App() {
                           <div style={{ marginTop: 10 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <strong style={{ fontSize: 12 }}>{artifactName}</strong>
-                              <button onClick={() => { setArtifactName(null); setArtifactContent(null); }} style={{ fontSize: 11 }}>close</button>
+                              <button className="zelda-button" onClick={() => { setArtifactName(null); setArtifactContent(null); }} style={{ fontSize: 11, padding: '2px 8px' }}>close</button>
                             </div>
-                            <pre style={{ background: '#000', padding: 12, overflow: 'auto', maxHeight: 200, fontSize: 12, whiteSpace: 'pre-wrap' }}>{artifactContent}</pre>
+                            <pre className="zelda-pre" style={{ maxHeight: 200, fontSize: 12, whiteSpace: 'pre-wrap' }}>{artifactContent}</pre>
                           </div>
                         )}
                       </div>
@@ -1421,17 +1393,19 @@ export default function App() {
                         </p>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
                           <input
+                            className="zelda-input"
                             type="text"
                             value={ensLabel}
                             onChange={e => setEnsLabel(e.target.value)}
                             placeholder="yourlabel"
-                            style={{ flex: 1, padding: '6px', fontSize: '14px' }}
+                            style={{ flex: 1, fontSize: '14px' }}
                             disabled={ensMinting}
                           />
                           <button
+                            className="zelda-button zelda-button--primary"
                             onClick={handleEnsMint}
                             disabled={!ensLabel.trim() || ensMinting}
-                            style={{ padding: '6px 12px', fontSize: '14px', cursor: ensMinting ? 'not-allowed' : 'pointer' }}
+                            style={{ fontSize: '14px' }}
                           >
                             {ensMinting ? 'Minting…' : 'Claim'}
                           </button>
@@ -1453,11 +1427,12 @@ export default function App() {
                       </div>
                     )}
                     <button
+                      className="zelda-button"
                       onClick={() => {
                         setSelectedQuestId(null);
                         setQuestData(null);
                       }}
-                      style={{ marginTop: '16px', padding: '8px 16px' }}
+                      style={{ marginTop: '16px' }}
                     >
                       Back to List
                     </button>
