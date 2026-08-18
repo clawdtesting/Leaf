@@ -15,31 +15,13 @@ export const QuestOverlay: React.FC<QuestOverlayProps> = ({
 }) => {
   if (!questInProgress && !questCompleted) return null;
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100vh',
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
-      <div style={{
-        background: '#fff',
-        padding: '2rem',
-        borderRadius: '8px',
-        textAlign: 'center',
-        maxWidth: '80%',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-      }}>
+    <div className="zelda-overlay">
+      <div className="zelda-card" style={{ textAlign: 'center' }}>
         {questInProgress ? (
           <>
             <h2>Quest in Progress</h2>
             <p>Find 10 Robinhood Chain projects – Scouts dispatched…</p>
-            {onClose && <button onClick={onClose} style={{marginTop: '1rem', padding: '0.5rem 1rem'}}>
+            {onClose && <button className="zelda-button" onClick={onClose} style={{marginTop: '1rem'}}>
               Close
             </button>}
           </>
@@ -54,7 +36,7 @@ export const QuestOverlay: React.FC<QuestOverlayProps> = ({
                 ))}
               </ul>
             )}
-            {onClose && <button onClick={onClose} style={{marginTop: '1rem', padding: '0.5rem 1rem'}}>
+            {onClose && <button className="zelda-button" onClick={onClose} style={{marginTop: '1rem'}}>
               Close
             </button>}
           </>
