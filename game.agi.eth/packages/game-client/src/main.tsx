@@ -216,6 +216,7 @@ const MANCER_ABI = [
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function tokenURI(uint256 tokenId) view returns (string)",
   "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
+  "function totalSupply() view returns (uint256)",
   "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
 ];
 
@@ -224,6 +225,10 @@ const MANCER_ABI = [
 const MANCER_START_BLOCK = Number(import.meta.env.VITE_MANCER_START_BLOCK ?? 0) || 0;
 const LOG_CHUNK = 50000;
 const MAX_CHUNKS = 400;
+// Log-free ownerOf-scan bounds (used when the contract isn't Enumerable and the
+// RPC caps or rejects eth_getLogs — common on rollups).
+const OWNER_SCAN_MAX_IDS = Number(import.meta.env.VITE_MANCER_MAX_ID ?? 20000) || 20000;
+const OWNER_SCAN_CONCURRENCY = 24;
 
 const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/';
 function ipfsToHttp(uri?: string): string {
@@ -263,9 +268,49 @@ async function receivedTokenIds(
 }
 
 /**
+ * Enumerate owned token ids WITHOUT logs: walk the id space [0..totalSupply]
+ * and keep ids whose ownerOf() is `address`. Works on RPCs that cap or reject
+ * eth_getLogs. Stops early once `balance` tokens are found. Requires the
+ * contract to expose totalSupply(); returns null if it does not.
+ */
+async function ownedByOwnerOfScan(
+  contract: any,
+  address: string,
+  balance: number,
+  max: number,
+): Promise<string[] | null> {
+  let supply: number;
+  try {
+    supply = Number(await contract.totalSupply());
+  } catch {
+    return null; // no totalSupply — caller falls back to the log scan
+  }
+  if (!Number.isFinite(supply) || supply <= 0) return [];
+
+  const target = balance > 0 ? balance : max;
+  // Scan 0..supply inclusive so both 0-based and 1-based id schemes are covered.
+  const hi = Math.min(supply, OWNER_SCAN_MAX_IDS);
+  const want = address.toLowerCase();
+  const owned: string[] = [];
+
+  for (let start = 0; start <= hi && owned.length < target && owned.length < max; start += OWNER_SCAN_CONCURRENCY) {
+    const batch: number[] = [];
+    for (let id = start; id < start + OWNER_SCAN_CONCURRENCY && id <= hi; id++) batch.push(id);
+    const results = await Promise.allSettled(
+      batch.map(async (id) => ((await contract.ownerOf(id)) as string).toLowerCase() === want ? id : -1),
+    );
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value >= 0) owned.push(String(r.value));
+    }
+  }
+  return owned;
+}
+
+/**
  * List the Mancer NFTs currently owned by an address. Tries ERC-721 Enumerable
- * first (cheap when supported), otherwise scans Transfer logs and verifies with
- * ownerOf. Resolves metadata/images through an IPFS gateway. Bounded to `max`.
+ * first (cheap when supported); otherwise enumerates log-free via a totalSupply
+ * + ownerOf scan, and only falls back to a Transfer-log scan if that path is
+ * unavailable. Resolves metadata/images through an IPFS gateway. Bounded to `max`.
  */
 async function fetchOwnedMancers(address: string, max = 48): Promise<OwnedMancer[]> {
   const provider = new ethers.JsonRpcProvider(ROBINHOOD_RPC_URL);
@@ -273,23 +318,32 @@ async function fetchOwnedMancers(address: string, max = 48): Promise<OwnedMancer
 
   // 1) Determine the owned token ids.
   let ids: string[] = [];
+  const balance = Number(await contract.balanceOf(address).catch(() => 0n));
   try {
-    const bal: number = Number(await contract.balanceOf(address));
-    for (let i = 0; i < Math.min(bal, max); i++) {
+    // 1a) ERC-721 Enumerable (cheap and exact when supported).
+    if (balance <= 0) throw new Error('empty');
+    for (let i = 0; i < Math.min(balance, max); i++) {
       ids.push((await contract.tokenOfOwnerByIndex(address, i)).toString());
     }
   } catch {
-    // Not enumerable (expected for ERC721-C) — use event scan + ownerOf.
-    const candidates = await receivedTokenIds(contract, provider, address);
-    const owned: string[] = [];
-    for (const id of candidates) {
-      if (owned.length >= max) break;
-      try {
-        const owner: string = await contract.ownerOf(id);
-        if (owner.toLowerCase() === address.toLowerCase()) owned.push(id);
-      } catch { /* burned / moved — skip */ }
+    // 1b) Not enumerable (expected for ERC721-C). Prefer the log-free
+    // totalSupply + ownerOf scan; it works where eth_getLogs is restricted.
+    const scanned = await ownedByOwnerOfScan(contract, address, balance, max).catch(() => null);
+    if (scanned && scanned.length > 0) {
+      ids = scanned;
+    } else {
+      // 1c) Last resort: Transfer-log scan + ownerOf.
+      const candidates = await receivedTokenIds(contract, provider, address);
+      const owned: string[] = [];
+      for (const id of candidates) {
+        if (owned.length >= max) break;
+        try {
+          const owner: string = await contract.ownerOf(id);
+          if (owner.toLowerCase() === address.toLowerCase()) owned.push(id);
+        } catch { /* burned / moved — skip */ }
+      }
+      ids = owned;
     }
-    ids = owned;
   }
 
   // 2) Resolve metadata/images.
@@ -540,7 +594,7 @@ export default function App() {
       })
       .catch(err => {
         console.error('Failed to load Mancers:', err);
-        setMancersError('Could not load your Mancers. Check the Mancer contract / RPC config (and set VITE_MANCER_START_BLOCK to the deploy block to speed up the scan).');
+        setMancersError('Could not load your Mancers. Check VITE_MANCER_CONTRACT_ADDRESS / VITE_ROBINHOOD_RPC_URL. If the collection is large, raise VITE_MANCER_MAX_ID to cover higher token ids.');
       })
       .finally(() => setMancersLoading(false));
   };
