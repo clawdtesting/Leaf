@@ -319,13 +319,69 @@ async function ownedByOwnerOfScan(
 }
 
 /**
- * List the Mancer NFTs currently owned by an address. Tries ERC-721 Enumerable
- * first (cheap when supported); otherwise enumerates log-free via a totalSupply
- * + ownerOf scan, and only falls back to a Transfer-log scan if that path is
- * unavailable. Resolves metadata/images through an IPFS gateway. Bounded to `max`.
+ * Fast path: resolve owned Mancers in ONE call via the Alchemy NFT API, using
+ * the same key already present in the RPC URL (no extra config, no exposure
+ * beyond the read key already shipped to the client). Returns null when the RPC
+ * is not an Alchemy endpoint or the NFT API isn't available on this network, so
+ * the caller falls back to other paths.
+ */
+async function fetchViaAlchemyNft(address: string, max = 48): Promise<OwnedMancer[] | null> {
+  if (!ROBINHOOD_RPC_URL || !/\.g\.alchemy\.com\/v2\//.test(ROBINHOOD_RPC_URL)) return null;
+  // https://<net>.g.alchemy.com/v2/<key>  ->  https://<net>.g.alchemy.com/nft/v3/<key>
+  const [base, key] = ROBINHOOD_RPC_URL.split('/v2/');
+  if (!base || !key) return null;
+  const nftBase = `${base}/nft/v3/${key}/getNFTsForOwner`;
+
+  try {
+    const out: OwnedMancer[] = [];
+    let pageKey: string | undefined;
+    for (let page = 0; page < 10 && out.length < max; page++) {
+      const url = new URL(nftBase);
+      url.searchParams.set('owner', address);
+      url.searchParams.append('contractAddresses[]', MANCER_CONTRACT_ADDRESS);
+      url.searchParams.set('withMetadata', 'true');
+      url.searchParams.set('pageSize', '100');
+      if (pageKey) url.searchParams.set('pageKey', pageKey);
+
+      const resp = await fetch(url.toString());
+      if (!resp.ok) {
+        console.warn('[Mancers] Alchemy NFT API unavailable', resp.status, '— falling back');
+        return null; // NFT API not available here — fall back
+      }
+      const data: any = await resp.json();
+      const nfts: any[] = Array.isArray(data?.ownedNfts) ? data.ownedNfts : [];
+      for (const n of nfts) {
+        const tokenId = n?.tokenId != null ? String(n.tokenId) : undefined;
+        if (!tokenId) continue;
+        const img = n?.image?.cachedUrl || n?.image?.originalUrl || n?.image?.pngUrl || n?.raw?.metadata?.image;
+        out.push({ tokenId, name: n?.name || n?.raw?.metadata?.name, image: ipfsToHttp(img) });
+        if (out.length >= max) break;
+      }
+      pageKey = data?.pageKey || undefined;
+      if (!pageKey) break;
+    }
+    console.log('[Mancers] resolved via Alchemy NFT API:', out.length);
+    return out;
+  } catch (e) {
+    console.warn('[Mancers] Alchemy NFT API error — falling back:', e);
+    return null;
+  }
+}
+
+/**
+ * List the Mancer NFTs currently owned by an address. Resolution order, fastest
+ * first: (1) Alchemy NFT API (one call, uses the existing RPC key); (2) the
+ * backend OpenSea proxy (key stays server-side); (3) ERC-721 Enumerable; (4) a
+ * log-free totalSupply + ownerOf scan; (5) a Transfer-log scan. Each path is
+ * used only if it returns tokens, so nothing hides a token from a slower but
+ * more complete path. Bounded to `max`.
  */
 async function fetchOwnedMancers(address: string, max = 48): Promise<OwnedMancer[]> {
-  // 0) Fast path: ask the backend's OpenSea proxy (key stays server-side). Use
+  // 0a) Fastest: Alchemy NFT API (single call, images included, existing key).
+  const viaAlchemy = await fetchViaAlchemyNft(address, max);
+  if (viaAlchemy && viaAlchemy.length > 0) return viaAlchemy;
+
+  // 0b) Fast path: ask the backend's OpenSea proxy (key stays server-side). Use
   // it only when it is configured AND returns tokens; otherwise fall through to
   // on-chain enumeration so a missing key or indexing lag never hides tokens.
   try {
