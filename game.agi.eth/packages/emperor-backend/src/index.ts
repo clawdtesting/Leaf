@@ -9,6 +9,7 @@ import { getIpfsConfig } from './ipfs/config';
 import { getSanitizedHermesConfigSummary } from './agents/hermes/config';
 import { buildCompletionUnsignedTx, getUnsignedTx } from './tx/build';
 import { verifyCompletionOutcome } from './tx/outcome/verify';
+import { fetchMancersFromOpenSea, openSeaStatus } from './opensea';
 import type { ContractId } from './tx/types';
 import crypto from 'crypto';
 import { ethers } from 'ethers';
@@ -230,6 +231,25 @@ app.post('/completion-tx/:id/verify', async (req, res) => {
   res.status(result.ok ? 200 : 409).json(result);
 });
 
+
+// OpenSea-backed Mancer ownership for the character-selection card. The
+// OpenSea key stays server-side; the client only ever sees the token list.
+// Returns { available: false } when not configured or on error, so the client
+// falls back to on-chain enumeration.
+app.get('/opensea/status', (_req, res) => {
+  res.json(openSeaStatus());
+});
+
+app.get('/mancers/:address', async (req, res) => {
+  const contract = (
+    (Array.isArray(req.query.contract) ? req.query.contract[0] : req.query.contract) as string | undefined
+  ) || process.env.MANCER_CONTRACT_ADDRESS || '';
+  if (!/^0x[a-fA-F0-9]{40}$/.test(contract)) {
+    return res.json({ available: false, error: 'Mancer contract address not provided' });
+  }
+  const result = await fetchMancersFromOpenSea(req.params.address, contract);
+  res.json(result);
+});
 
 // Auth nonce endpoint
 app.get('/auth/nonce', (_req, res) => {

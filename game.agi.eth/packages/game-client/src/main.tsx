@@ -325,6 +325,24 @@ async function ownedByOwnerOfScan(
  * unavailable. Resolves metadata/images through an IPFS gateway. Bounded to `max`.
  */
 async function fetchOwnedMancers(address: string, max = 48): Promise<OwnedMancer[]> {
+  // 0) Fast path: ask the backend's OpenSea proxy (key stays server-side). Use
+  // it only when it is configured AND returns tokens; otherwise fall through to
+  // on-chain enumeration so a missing key or indexing lag never hides tokens.
+  try {
+    const q = MANCER_CONTRACT_ADDRESS ? `?contract=${MANCER_CONTRACT_ADDRESS}` : '';
+    const resp = await fetch(`http://localhost:3001/mancers/${address}${q}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data?.available && Array.isArray(data.mancers) && data.mancers.length > 0) {
+        return data.mancers.slice(0, max).map((m: any): OwnedMancer => ({
+          tokenId: String(m.tokenId),
+          name: m.name,
+          image: ipfsToHttp(m.image),
+        }));
+      }
+    }
+  } catch { /* backend/OpenSea unavailable — fall back to on-chain */ }
+
   const provider = new ethers.JsonRpcProvider(ROBINHOOD_RPC_URL);
   const contract = new ethers.Contract(MANCER_CONTRACT_ADDRESS, MANCER_ABI, provider);
 
