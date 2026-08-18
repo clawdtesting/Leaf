@@ -293,15 +293,27 @@ async function ownedByOwnerOfScan(
   const want = address.toLowerCase();
   const owned: string[] = [];
 
+  // ownerOf may reject for two very different reasons: a nonexistent/burned id
+  // (a legitimate skip) or a transient RPC error such as rate limiting (which
+  // must NOT be silently dropped, or we'd miss a real token). Retry once with a
+  // short backoff; a genuinely nonexistent id simply reverts again and is
+  // skipped, at negligible cost on a contiguous collection.
+  const ownerOfMatches = async (id: number): Promise<boolean> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return ((await contract.ownerOf(id)) as string).toLowerCase() === want;
+      } catch {
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+    return false;
+  };
+
   for (let start = 0; start <= hi && owned.length < target && owned.length < max; start += OWNER_SCAN_CONCURRENCY) {
     const batch: number[] = [];
     for (let id = start; id < start + OWNER_SCAN_CONCURRENCY && id <= hi; id++) batch.push(id);
-    const results = await Promise.allSettled(
-      batch.map(async (id) => ((await contract.ownerOf(id)) as string).toLowerCase() === want ? id : -1),
-    );
-    for (const r of results) {
-      if (r.status === 'fulfilled' && r.value >= 0) owned.push(String(r.value));
-    }
+    const flags = await Promise.all(batch.map(ownerOfMatches));
+    batch.forEach((id, i) => { if (flags[i]) owned.push(String(id)); });
   }
   return owned;
 }
