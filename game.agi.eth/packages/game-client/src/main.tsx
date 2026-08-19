@@ -1205,6 +1205,13 @@ export default function App() {
         >
           {mapConfigMode ? '✓ Finish Map Editing' : '🗺 Edit Map'}
         </button>
+        <button
+          onClick={toggleMapConfigMode}
+          aria-pressed={mapConfigMode}
+          style={{ padding: '6px 12px', background: mapConfigMode ? '#d97706' : '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
+        >
+          {mapConfigMode ? '✓ Finish Map Editing' : '🗺 Edit Map'}
+        </button>
       </div>
 
       {/* ==== Main game canvas ==== */}
