@@ -2,52 +2,53 @@
   {
     "id": "1",
     "intent": {
-      "action": "CAPABILITY_DISCOVERY",
-      "target": "Cross-chain auditing",
-      "details": "Seed a new capability where existing ones fall short"
+      "action": "ECOSYSTEM_RESEARCH",
+      "target": "Robinhood Chain",
+      "details": "Find 10 projects with demonstrated real utility"
     },
-    "capability": "NovaSeed",
-    "building": "Nova Garden",
+    "capability": "Research",
+    "building": "Explorer's Guild",
     "route": "GOALOS",
-    "budgetClass": "novaseed-small",
+    "budgetClass": "research-small",
     "status": "completed",
     "plan": [
-      "Detect capability gap",
-      "Generate candidate approaches",
-      "Evaluate candidates",
-      "Fresh-work test",
-      "Promote or reject"
+      "Discover candidate universe",
+      "Verify project existence",
+      "Inspect documentation, contracts and repositories",
+      "Assess product utility and risk",
+      "Collect evidence and score candidates",
+      "Produce ranked conclusion"
     ],
     "evidence": [
       {
-        "type": "candidate",
+        "type": "artifact",
         "ref": "output/artifacts/mock-candidate.txt",
         "summary": "artifact sha256:318bef52e49d9223…"
       },
       {
-        "type": "artifact",
+        "type": "contracts",
         "ref": "output/artifacts/mock-contracts.txt",
-        "summary": "artifact sha256:b1aa409405918456…"
+        "summary": "artifact sha256:bed92ba94c631c83…"
+      },
+      {
+        "type": "documentation",
+        "ref": "output/artifacts/mock-documentation.txt",
+        "summary": "artifact sha256:bed92ba94c631c83…"
       },
       {
         "type": "artifact",
-        "ref": "output/artifacts/mock-documentation.txt",
-        "summary": "artifact sha256:93a1146ec104a029…"
-      },
-      {
-        "type": "fresh-evaluation",
         "ref": "output/artifacts/mock-fresh-evaluation.txt",
         "summary": "artifact sha256:318bef52e49d9223…"
       },
       {
-        "type": "artifact",
+        "type": "product",
         "ref": "output/artifacts/mock-product.txt",
-        "summary": "artifact sha256:b1aa409405918456…"
+        "summary": "artifact sha256:bed92ba94c631c83…"
       },
       {
-        "type": "artifact",
+        "type": "repository",
         "ref": "output/artifacts/mock-repository.txt",
-        "summary": "artifact sha256:b1aa409405918456…"
+        "summary": "artifact sha256:bed92ba94c631c83…"
       },
       {
         "type": "artifact",
@@ -67,51 +68,51 @@
       {
         "type": "log",
         "ref": "output/logs/mock-hermes-run.log",
-        "summary": "log sha256:c818713eafb8bf45…"
+        "summary": "log sha256:2683d43bda6b2e5a…"
       }
     ],
     "log": [
       {
-        "t": 1786916405356,
+        "t": 1787096802068,
         "stage": "accepted",
-        "note": "Emperor accepted intent for NovaSeed (GOALOS)"
+        "note": "Emperor accepted intent for Research (GOALOS)"
       },
       {
-        "t": 1786916406570,
+        "t": 1787096803295,
         "stage": "planning",
-        "note": "Decomposed objective into 5 steps via GOALOS"
+        "note": "Decomposed objective into 6 steps via GOALOS"
       },
       {
-        "t": 1786916408779,
+        "t": 1787096805507,
         "stage": "executing",
-        "note": "Executing NovaSeed via Hermes (MOCK)"
+        "note": "Executing Research via Hermes (MOCK)"
       },
       {
-        "t": 1786916408785,
+        "t": 1787096805515,
         "stage": "executing",
         "note": "Hermes COMPLETED: 10 evidence item(s) produced."
       },
       {
-        "t": 1786916410125,
+        "t": 1787096806823,
         "stage": "validating",
         "note": "Independent validation: PASS"
       },
       {
-        "t": 1786916417502,
+        "t": 1787096843527,
         "stage": "completed",
-        "note": "Docket published to IPFS (QmdBscswva21oXZg…), fetchback verified."
+        "note": "IPFS publish did not complete: Fetchback failed: gateway 404"
       },
       {
-        "t": 1786916417502,
+        "t": 1787096843527,
         "stage": "completed",
-        "note": "Evidence accepted; docket published to IPFS QmdBscswva21…"
+        "note": "Evidence accepted; IPFS publish failed: Fetchback failed: gateway 404"
       }
     ],
-    "createdAt": 1786916405355,
-    "updatedAt": 1786916417502,
+    "createdAt": 1787096802068,
+    "updatedAt": 1787096843527,
     "result": {
-      "message": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
-      "summary": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
+      "message": "Mock Hermes task completed: Research: Robinhood Chain",
+      "summary": "Mock Hermes task completed: Research: Robinhood Chain",
       "data": [
         "output/artifacts/mock-candidate.txt",
         "output/artifacts/mock-contracts.txt",
@@ -134,11 +135,11 @@
           },
           {
             "path": "output/artifacts/mock-contracts.txt",
-            "sha256": "b1aa40940591845692fd81e29b24e5a25db46f12c1f9d87776e4b86abb178185"
+            "sha256": "bed92ba94c631c834e3070ade0386e040a5bd6b1d3393d1fe7e2eb6f9c2c5267"
           },
           {
             "path": "output/artifacts/mock-documentation.txt",
-            "sha256": "93a1146ec104a0294def2e5cc3a4fcb865ea262cdddabbfff4a6fc4b59d4fc0d"
+            "sha256": "bed92ba94c631c834e3070ade0386e040a5bd6b1d3393d1fe7e2eb6f9c2c5267"
           },
           {
             "path": "output/artifacts/mock-fresh-evaluation.txt",
@@ -146,11 +147,11 @@
           },
           {
             "path": "output/artifacts/mock-product.txt",
-            "sha256": "b1aa40940591845692fd81e29b24e5a25db46f12c1f9d87776e4b86abb178185"
+            "sha256": "bed92ba94c631c834e3070ade0386e040a5bd6b1d3393d1fe7e2eb6f9c2c5267"
           },
           {
             "path": "output/artifacts/mock-repository.txt",
-            "sha256": "b1aa40940591845692fd81e29b24e5a25db46f12c1f9d87776e4b86abb178185"
+            "sha256": "bed92ba94c631c834e3070ade0386e040a5bd6b1d3393d1fe7e2eb6f9c2c5267"
           },
           {
             "path": "output/artifacts/mock-source.txt",
@@ -168,7 +169,7 @@
         "logs": [
           {
             "path": "output/logs/mock-hermes-run.log",
-            "sha256": "c818713eafb8bf45dfc9298dcfc502e5dc498948782f85d4e68347f99e0a15ec"
+            "sha256": "2683d43bda6b2e5afa373cfb8ab43162e0b5371dadd7b85ca967113ba953e36c"
           }
         ],
         "safety_findings": [
@@ -176,11 +177,13 @@
         ],
         "result_json": {
           "status": "COMPLETED",
-          "summary": "Mock Hermes execution for NovaSeed: Cross-chain auditing",
-          "completed_at": "2026-08-16T21:40:08.780Z",
+          "summary": "Mock Hermes execution for Research: Robinhood Chain",
+          "completed_at": "2026-08-18T23:46:45.511Z",
           "artifacts_created": [
-            "mock-candidate.txt",
-            "mock-fresh-evaluation.txt"
+            "mock-repository.txt",
+            "mock-product.txt",
+            "mock-contracts.txt",
+            "mock-documentation.txt"
           ],
           "logs": [
             "mock-hermes-run.log"
@@ -201,15 +204,14 @@
     "docket": {
       "id": "docket-1",
       "execution_run_id": "1",
-      "title": "NovaSeed — Cross-chain auditing #1",
-      "summary": "Mock Hermes task completed: NovaSeed: Cross-chain auditing",
+      "title": "Research — Robinhood Chain #1",
+      "summary": "Mock Hermes task completed: Research: Robinhood Chain",
       "artifact_manifest": [],
-      "validation_report": "{\"verdict\":\"PASS\",\"validator\":\"hall-of-judgment\",\"notes\":\"All required evidence present.\",\"ipfs_publication\":{\"local_sha256\":\"467e78a6df58b244f7168f0f6f7bba8267902465a0f13ac68a1fb60c6e174ac7\",\"fetched_sha256\":\"467e78a6df58b244f7168f0f6f7bba8267902465a0f13ac68a1fb60c6e174ac7\",\"matched\":true,\"mock\":false}}",
-      "content_hash": "10e34fe0a5fe019ffc2b9f804970d3a48bb153f3d8b4bcd1995f21043c459a5e",
-      "publication_status": "PUBLISHED_IPFS",
-      "created_at": "2026-08-16T21:40:11.326Z",
-      "updated_at": "2026-08-16T21:40:17.502Z",
-      "ipfs_cid": "QmdBscswva21oXZg6fgezHpBE9VTyqpkZwHXpA3dXyWNr6"
+      "validation_report": "{\"verdict\":\"PASS\",\"validator\":\"hall-of-judgment\",\"notes\":\"All required evidence present.\"}",
+      "content_hash": "bb8b58c7ff0e8f70ee08c2d536272610ae162ebbd8205ef2183f3b03268ebe56",
+      "publication_status": "FAILED",
+      "created_at": "2026-08-18T23:46:48.068Z",
+      "updated_at": "2026-08-18T23:46:48.068Z"
     }
   },
   {
