@@ -1,0 +1,125 @@
+:root {
+  color: #251507;
+  background: #080604;
+  font-family: "Courier New", Courier, monospace;
+}
+
+body { margin: 0; }
+button, input { font: inherit; }
+
+.zelda-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(5, 2, 0, .72);
+  backdrop-filter: blur(1px);
+}
+
+.zelda-card {
+  position: relative;
+  width: min(680px, 92vw);
+  max-height: 82vh;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 34px 42px;
+  color: #2b190a;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(109, 66, 23, .12) 0 2px, transparent 3px),
+    radial-gradient(circle at 80% 72%, rgba(109, 66, 23, .1) 0 1px, transparent 3px),
+    linear-gradient(100deg, rgba(255,255,255,.12), transparent 35%, rgba(105,61,18,.08)),
+    #d9b979;
+  background-size: 43px 37px, 57px 49px, auto, auto;
+  border: 10px solid #6d3516;
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 4px #271207,
+    inset 0 0 0 3px #a96029,
+    inset 0 0 28px rgba(72, 33, 9, .32),
+    0 14px 36px #000b;
+  image-rendering: pixelated;
+}
+
+.zelda-card::before,
+.zelda-card::after {
+  content: "◆";
+  position: absolute;
+  top: 8px;
+  color: #2b1609;
+  font-size: 18px;
+  text-shadow: 1px 1px #bd7540;
+}
+.zelda-card::before { left: 10px; }
+.zelda-card::after { right: 10px; }
+
+.zelda-card h2,
+.zelda-card h3,
+.zelda-card h4 {
+  color: #321b09;
+  letter-spacing: .02em;
+  text-shadow: 1px 1px 0 #edcf92;
+}
+.zelda-card h2 { margin: 0 0 8px; font-size: clamp(24px, 4vw, 38px); }
+.zelda-card p { line-height: 1.45; }
+.zelda-muted { color: #6a3c1b; }
+
+.zelda-card label {
+  display: block;
+  margin: 18px 0 7px;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.zelda-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  color: #f3dca8;
+  background: #3b2414;
+  border: 4px solid #7d4923;
+  border-radius: 0;
+  outline: 2px solid #2a1609;
+  box-shadow: inset 0 0 10px #0008, 2px 2px 0 #b8793e;
+}
+.zelda-input:focus { border-color: #bd7d37; }
+.zelda-input--paper { color: #2b190a; background: #e3c78f; }
+
+.zelda-actions { display: flex; flex-wrap: wrap; gap: 14px; justify-content: flex-end; margin-top: 24px; }
+.zelda-button {
+  padding: 10px 22px;
+  color: #34200f;
+  background: linear-gradient(#e2c184, #bd8c4f);
+  border: 3px solid #74401c;
+  border-radius: 2px;
+  outline: 2px solid #291509;
+  box-shadow: inset 0 0 0 2px #efcf91, 3px 3px 0 #4a260f;
+  cursor: pointer;
+}
+.zelda-button:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.zelda-button:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: inset 0 0 0 2px #efcf91, 1px 1px 0 #4a260f; }
+.zelda-button--primary { color: #f5e4bd; background: linear-gradient(#76509e, #493064); border-color: #39224f; }
+.zelda-button:disabled { filter: grayscale(.7); cursor: not-allowed; opacity: .6; }
+
+.zelda-choice {
+  color: #38200d;
+  background: rgba(92, 50, 18, .12);
+  border: 3px solid #815029;
+  border-radius: 2px;
+  padding: 8px;
+  cursor: pointer;
+}
+.zelda-choice--active { background: #6f4b8d; color: #fff0c8; border-color: #3a224c; }
+.zelda-list { list-style: none; padding: 0; margin: 0; }
+.zelda-list li { padding: 10px 0; border-bottom: 2px solid rgba(93, 49, 19, .35); }
+.zelda-pre { padding: 12px; overflow: auto; color: #f0d49c; background: #2d1a0e; border: 3px solid #7a4825; }
+
+@media (max-width: 600px) {
+  .zelda-overlay { padding: 12px; }
+  .zelda-card { padding: 28px 22px; border-width: 7px; }
+  .zelda-actions { justify-content: stretch; }
+  .zelda-actions .zelda-button { flex: 1; }
+}

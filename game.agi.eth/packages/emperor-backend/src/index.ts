@@ -5,7 +5,7 @@ import path from 'path';
 import { ACTIONS, getAction, listActions } from './capabilities';
 import { createMission, getMission, listMissions, mockPublishDocketToIpfs, publishDocketToIpfs } from './emperor';
 import { protocolStatus, readNextJobId, readJobSnapshot } from './protocol/read';
-import { getIpfsConfig } from './ipfs/config';
+import { getIpfsConfig, getGatewayUrl } from './ipfs/config';
 import { getSanitizedHermesConfigSummary } from './agents/hermes/config';
 import { buildCompletionUnsignedTx, getUnsignedTx } from './tx/build';
 import { verifyCompletionOutcome } from './tx/outcome/verify';
@@ -162,6 +162,29 @@ app.get('/job/:id/status', (req, res) => {
     cost: mission.cost,
     log: mission.log,
   });
+});
+
+// Fetch a mission's published evidence bundle through the backend. This keeps
+// the in-game reader independent of browser gateway CORS policy while still
+// serving only the immutable CID recorded on that mission's sealed docket.
+app.get('/job/:id/evidence-bundle', async (req, res) => {
+  const mission = getMission(req.params.id);
+  if (!mission) return res.status(404).json({ error: 'Job not found' });
+  const requester = walletOf(req);
+  if (mission.userId !== undefined && mission.userId !== requester) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  const cid = mission.docket?.ipfs_cid;
+  if (!cid) return res.status(409).json({ error: 'Evidence has not been published to IPFS' });
+  try {
+    const response = await fetch(getGatewayUrl(cid), { headers: { Accept: 'application/json' } });
+    if (!response.ok) return res.status(502).json({ error: `IPFS gateway returned ${response.status}`, cid });
+    const bundle = await response.json();
+    res.setHeader('Cache-Control', 'public, max-age=300, immutable');
+    return res.json(bundle);
+  } catch (error) {
+    return res.status(502).json({ error: `Could not retrieve IPFS evidence: ${(error as Error).message}`, cid });
+  }
 });
 
 // IPFS configuration status (is real publishing available?).

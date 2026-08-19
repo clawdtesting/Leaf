@@ -10,6 +10,8 @@ interface InteriorSceneProps {
   title?: string;
   /** Optional text to show on the “Leave” button */
   leaveLabel?: string;
+  /** Interactive objects, positioned as fractions of the room image. */
+  actions?: Array<{ x: number; y: number; radius?: number; label: string; onAction: () => void }>;
 }
 
 const LEAF_FRAME = 64;
@@ -25,6 +27,9 @@ export class InteriorScene extends Scene {
   private interior!: GameObjects.Image;
   private leaf!: Physics.Arcade.Sprite;
   private cursors!: Types.Input.Keyboard.CursorKeys;
+  private actionKey?: Input.Keyboard.Key;
+  private actionPrompt?: GameObjects.Text;
+  private actionPositions: Array<{ x: number; y: number; radius: number; label: string; onAction: () => void }> = [];
   private lastDir: 'down' | 'up' | 'left' | 'right' = 'down';
 
   constructor(props: InteriorSceneProps) {
@@ -83,6 +88,28 @@ export class InteriorScene extends Scene {
     this.lastDir = 'up';
 
     this.cursors = this.input.keyboard!.createCursorKeys();
+
+    // ----- Building action hotspots -----
+    // Entering a room never opens an action automatically. Players walk up and
+    // press SPACE, or click the object directly (for example, the Guild table
+    // map opens mission intake and the books open the Evidence Vault).
+    if (this.props.actions?.length) {
+      this.actionKey = this.input.keyboard!.addKey(Input.Keyboard.KeyCodes.SPACE);
+      this.props.actions.forEach(action => {
+        const x = left + roomW * action.x;
+        const y = top + roomH * action.y;
+        const radius = action.radius ?? 72;
+        this.actionPositions.push({ x, y, radius, label: action.label, onAction: action.onAction });
+        this.add.zone(x, y, radius * 2, radius * 1.25)
+          .setInteractive({ useHandCursor: true })
+          .on('pointerdown', action.onAction);
+      });
+
+      this.actionPrompt = this.add.text(width / 2, height - 70, '', {
+        fontFamily: 'monospace', fontSize: '14px', color: '#ffff88',
+        backgroundColor: '#000000cc', padding: { x: 8, y: 4 },
+      }).setOrigin(0.5).setDepth(100);
+    }
 
     // ----- Title -----
     this.add
@@ -146,6 +173,15 @@ export class InteriorScene extends Scene {
       this.leaf.anims.stop();
       const idle: Record<string, number> = { down: 1, up: 4, left: 7, right: 10 };
       this.leaf.setFrame(idle[this.lastDir] ?? 1);
+    }
+
+    if (this.actionPositions.length && this.actionPrompt && this.actionKey) {
+      const nearby = this.actionPositions
+        .map(action => ({ action, distance: Phaser.Math.Distance.Between(this.leaf.x, this.leaf.y, action.x, action.y) }))
+        .filter(({ action, distance }) => distance <= action.radius)
+        .sort((a, b) => a.distance - b.distance)[0]?.action;
+      this.actionPrompt.setText(nearby ? `Press SPACE to ${nearby.label}` : '');
+      if (nearby && Input.Keyboard.JustDown(this.actionKey)) nearby.onAction();
     }
   }
 

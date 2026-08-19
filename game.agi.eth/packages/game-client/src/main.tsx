@@ -5,6 +5,7 @@ import { Game } from 'phaser';
 import { QuestOverlay } from './QuestOverlay';
 import { InteriorScene } from './InteriorScene';
 import { ethers } from 'ethers';
+import './game-ui.css';
 
 // --------------------------------------------------------------
 // Constants & building definitions
@@ -39,6 +40,10 @@ const BUILDINGS: BuildingDef[] = [
 // --------------------------------------------------------------
 interface DecorDef { key: string; x: number; y: number; scale: number; solid?: boolean; }
 
+type MapItemKind = 'building' | 'decor';
+interface MapItemPosition { id: string; kind: MapItemKind; key: string; x: number; y: number; }
+const MAP_LAYOUT_STORAGE_KEY = 'game-map-layout-v1';
+
 const DECOR: DecorDef[] = [
   { key: 'big_tree', x: 70, y: 140, scale: 0.55, solid: true },
   { key: 'big_tree', x: 745, y: 400, scale: 0.55, solid: true },
@@ -60,6 +65,29 @@ const DECOR: DecorDef[] = [
 ];
 
 const DECOR_KEYS = Array.from(new Set(DECOR.map(d => d.key)));
+const DEFAULT_MAP_POSITIONS = mapItems().map(item => ({ ...item }));
+
+function mapItems(): MapItemPosition[] {
+  return [
+    ...BUILDINGS.map((item, index) => ({ id: `building-${index}`, kind: 'building' as const, key: item.key, x: item.x, y: item.y })),
+    ...DECOR.map((item, index) => ({ id: `decor-${index}`, kind: 'decor' as const, key: item.key, x: item.x, y: item.y })),
+  ];
+}
+
+function applySavedMapLayout() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MAP_LAYOUT_STORAGE_KEY) || '{}') as Record<string, { x: number; y: number }>;
+    mapItems().forEach(item => {
+      const position = saved[item.id];
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return;
+      const target = item.kind === 'building' ? BUILDINGS[Number(item.id.split('-')[1])] : DECOR[Number(item.id.split('-')[1])];
+      target.x = Phaser.Math.Clamp(position.x, 0, WORLD_WIDTH);
+      target.y = Phaser.Math.Clamp(position.y, 0, WORLD_HEIGHT);
+    });
+  } catch {
+    localStorage.removeItem(MAP_LAYOUT_STORAGE_KEY);
+  }
+}
 
 // --------------------------------------------------------------
 // Outside Scene
@@ -94,32 +122,67 @@ function create(this: Phaser.Scene) {
   const solids = this.physics.add.staticGroup();
 
   // Decorations
-  DECOR.forEach(d => {
+  const editableItems: Record<string, { sprite: Phaser.GameObjects.Image; label?: Phaser.GameObjects.Text }> = {};
+  DECOR.forEach((d, index) => {
     if (d.solid) {
       const s = solids.create(d.x, d.y, d.key) as Phaser.Physics.Arcade.Sprite;
       s.setOrigin(0.5, 1).setScale(d.scale).refreshBody();
       s.setDepth(d.y);
+      editableItems[`decor-${index}`] = { sprite: s };
     } else {
-      this.add.image(d.x, d.y, d.key).setOrigin(0.5, 1).setScale(d.scale).setDepth(d.y);
+      const sprite = this.add.image(d.x, d.y, d.key).setOrigin(0.5, 1).setScale(d.scale).setDepth(d.y);
+      editableItems[`decor-${index}`] = { sprite };
     }
   });
 
   // Building sprites (quest triggers)
   const buildingGroup = this.physics.add.staticGroup();
   const buildingSprites: { def: BuildingDef; sprite: Phaser.GameObjects.Image }[] = [];
-  BUILDINGS.forEach(b => {
+  BUILDINGS.forEach((b, index) => {
     const sprite = buildingGroup.create(b.x, b.y, b.key) as Phaser.Physics.Arcade.Sprite;
     sprite.setOrigin(0.5, 1).setScale(0.55).refreshBody();
     sprite.setDepth(b.y);
     sprite.setInteractive({ useHandCursor: true });
-    sprite.on('pointerdown', () => enterBuilding(scene, b));
-    this.add.text(b.x, b.y - sprite.displayHeight - 6, b.name, {
+    sprite.on('pointerdown', () => {
+      if (!scene.mapConfigMode) enterBuilding(scene, b);
+    });
+    const label = this.add.text(b.x, b.y - sprite.displayHeight - 6, b.name, {
       fontFamily: 'monospace', fontSize: '12px', color: '#ffffff',
       backgroundColor: '#00000080', padding: { x: 4, y: 2 },
     }).setOrigin(0.5).setDepth(10000);
     buildingSprites.push({ def: b, sprite });
+    editableItems[`building-${index}`] = { sprite, label };
   });
   scene.buildingSprites = buildingSprites;
+  scene.editableItems = editableItems;
+
+  Object.entries(editableItems).forEach(([id, item]) => {
+    item.sprite.setInteractive({ useHandCursor: false, draggable: false });
+    item.sprite.on('pointerdown', () => {
+      if (scene.mapConfigMode) window.selectMapItem?.(id);
+    });
+    item.sprite.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+      if (!scene.mapConfigMode) return;
+      window.updateMapItem?.(id, Math.round(dragX), Math.round(dragY));
+    });
+  });
+
+  scene.setMapConfigMode = (enabled: boolean) => {
+    scene.mapConfigMode = enabled;
+    leaf.setVelocity(0, 0);
+    Object.values(editableItems).forEach(item => {
+      this.input.setDraggable(item.sprite, enabled);
+      item.sprite.input!.cursor = enabled ? 'move' : 'pointer';
+    });
+  };
+  scene.updateMapItemPosition = (id: string, x: number, y: number) => {
+    const item = editableItems[id];
+    if (!item) return;
+    item.sprite.setPosition(x, y).setDepth(y);
+    const body = item.sprite.body as Phaser.Physics.Arcade.StaticBody | undefined;
+    body?.updateFromGameObject();
+    if (item.label) item.label.setPosition(x, y - item.sprite.displayHeight - 6);
+  };
 
   // Leaf (player)
   const leaf = this.physics.add.sprite(WORLD_WIDTH / 2, 470, 'leaf');
@@ -158,11 +221,10 @@ function create(this: Phaser.Scene) {
 }
 
 function enterBuilding(scene: any, b: BuildingDef) {
-  // Don't auto-fire a hardcoded quest. Enter the building and open the
-  // mission-intake form so the player states what they actually want.
+  // Entering only opens the interior. Its action hotspot is responsible for
+  // opening mission intake after an explicit click or SPACE press.
   scene.scene.pause('outside');
   scene.scene.launch(`Interior-${b.key}`);
-  if (window.openIntake) window.openIntake(b);
 }
 
 function update(this: Phaser.Scene) {
@@ -170,6 +232,12 @@ function update(this: Phaser.Scene) {
   const leaf = scene.leaf as Phaser.Physics.Arcade.Sprite;
   if (!leaf) return;
   const cursors = scene.cursors as Phaser.Types.Input.Keyboard.CursorKeys;
+
+  if (scene.mapConfigMode) {
+    leaf.setVelocity(0, 0);
+    scene.prompt.setText('CONFIG MODE · drag an object or edit its X / Y values');
+    return;
+  }
 
   let vx = 0, vy = 0;
   if (cursors.left?.isDown) vx = -LEAF_SPEED;
@@ -586,6 +654,12 @@ export default function App() {
   const [selectedQuestId, setSelectedQuestId] = useState<string | null>(null);
   const [questLoading, setQuestLoading] = useState<boolean>(false);
   const [questData, setQuestData] = useState<any>(null);
+  const [mapConfigMode, setMapConfigMode] = useState(false);
+  const [mapLayout, setMapLayout] = useState<MapItemPosition[]>(() => {
+    applySavedMapLayout();
+    return mapItems();
+  });
+  const [selectedMapItemId, setSelectedMapItemId] = useState<string | null>(null);
 
   // ----- Mission intake (ask the player what they want) -----
   const [intakeBuilding, setIntakeBuilding] = useState<BuildingDef | null>(null);
@@ -596,6 +670,9 @@ export default function App() {
   const [artifactName, setArtifactName] = useState<string | null>(null);
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
   const [bundleArtifacts, setBundleArtifacts] = useState<any[] | null>(null);
+  const [evidenceBundle, setEvidenceBundle] = useState<any>(null);
+  const [bundleLoading, setBundleLoading] = useState(false);
+  const [bundleError, setBundleError] = useState<string | null>(null);
 
   // ----- Character (Mancer) selection -----
   const [mancers, setMancers] = useState<OwnedMancer[]>([]);
@@ -634,9 +711,21 @@ export default function App() {
 
   // ----- Phaser game setup -----
   useEffect(() => {
-    const interiors = BUILDINGS.map(
-      b => new InteriorScene({ buildingKey: b.key, interiorImg: `${b.key}-inside.png`, title: b.name, leaveLabel: 'Leave (Esc)' })
-    );
+    const interiors = BUILDINGS.map(b => new InteriorScene({
+      buildingKey: b.key,
+      interiorImg: `${b.key}-inside.png`,
+      title: b.name,
+      leaveLabel: 'Leave (Esc)',
+      // The Explorer's Guild action lives on the map spread across its table.
+      // Other interiors use a central workstation until bespoke hotspots are
+      // defined for their artwork.
+      actions: b.key === 'cabin'
+        ? [
+            { x: 0.25, y: 0.59, radius: 78, label: 'use the table map', onAction: () => window.openIntake?.(b) },
+            { x: 0.225, y: 0.22, radius: 68, label: 'read the Evidence Vault', onAction: () => window.openEvidenceVault?.() },
+          ]
+        : [{ x: 0.5, y: 0.48, radius: 72, label: `use ${b.name}`, onAction: () => window.openIntake?.(b) }],
+    }));
     const game = new Game({
       type: Phaser.AUTO,
       parent: 'game-container',
@@ -653,15 +742,50 @@ export default function App() {
       setIntakeTarget(b.target);
       setIntakeDetails(b.details);
     };
+    window.selectMapItem = setSelectedMapItemId;
+    window.updateMapItem = updateMapItem;
     window.phaserGame = game;
     return () => {
       game.destroy(true);
       delete window.setQuestInProgress;
       delete window.setJobId;
       delete window.openIntake;
+      delete window.selectMapItem;
+      delete window.updateMapItem;
       delete window.phaserGame;
     };
   }, [characterVersion]);
+
+  const updateMapItem = (id: string, rawX: number, rawY: number) => {
+    const x = Phaser.Math.Clamp(Math.round(rawX), 0, WORLD_WIDTH);
+    const y = Phaser.Math.Clamp(Math.round(rawY), 0, WORLD_HEIGHT);
+    const item = mapItems().find(candidate => candidate.id === id);
+    if (!item) return;
+    const index = Number(id.split('-')[1]);
+    const target = item.kind === 'building' ? BUILDINGS[index] : DECOR[index];
+    target.x = x;
+    target.y = y;
+    const next = mapItems();
+    setMapLayout(next);
+    setSelectedMapItemId(id);
+    localStorage.setItem(MAP_LAYOUT_STORAGE_KEY, JSON.stringify(Object.fromEntries(next.map(entry => [entry.id, { x: entry.x, y: entry.y }]))));
+    (window.phaserGame?.scene.getScene('outside') as any)?.updateMapItemPosition?.(id, x, y);
+  };
+
+  const toggleMapConfigMode = () => {
+    setMapConfigMode(enabled => {
+      const next = !enabled;
+      (window.phaserGame?.scene.getScene('outside') as any)?.setMapConfigMode?.(next);
+      if (!next) setSelectedMapItemId(null);
+      return next;
+    });
+  };
+
+  const resetMapLayout = () => {
+    DEFAULT_MAP_POSITIONS.forEach(item => updateMapItem(item.id, item.x, item.y));
+    localStorage.removeItem(MAP_LAYOUT_STORAGE_KEY);
+    setMapLayout(mapItems());
+  };
 
   // Open the Evidence Vault, loading quest history from the backend so it shows
   // persisted quests (not just this session's).
@@ -673,21 +797,58 @@ export default function App() {
       .then(r => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
       .then((d: any) => {
         const ids = (d.jobs || []).filter((j: any) => j.status === 'completed').map((j: any) => j.jobId);
-        if (ids.length) setCompletedQuestIds(ids);
+        setCompletedQuestIds(ids);
       })
       .catch(err => console.error('Failed to load quest history:', err));
   };
+
+  useEffect(() => {
+    window.openEvidenceVault = openVault;
+    return () => { delete window.openEvidenceVault; };
+  }, [walletAddress]);
 
   // Show an evidence artifact's content — read from the IPFS bundle (nothing
   // local). The bundle is fetched by CID when the quest is opened.
   const viewArtifact = (artifactPath: string) => {
     setArtifactName(artifactPath);
     if (!bundleArtifacts) {
-      setArtifactContent('Outputs are only viewable once the evidence is published to IPFS.');
+      const evidence = questData?.evidence?.find((item: any) => item.ref === artifactPath);
+      setArtifactContent([
+        evidence?.summary || 'Evidence record available, but this job has no published file body.',
+        '',
+        `Reference: ${artifactPath}`,
+        `Publication: ${questData?.docket?.publication_status || 'not published'}`,
+        '',
+        'Complete artifact contents become readable here after the evidence bundle is published to IPFS.',
+      ].join('\n'));
       return;
     }
-    const a = bundleArtifacts.find((x: any) => x.path === artifactPath);
-    setArtifactContent(a?.content ?? a?.note ?? 'Artifact not found in the published bundle.');
+    const clean = (value: string) => decodeURIComponent(value || '').replace(/^\.\//, '').replace(/^\/+/, '');
+    const wanted = clean(artifactPath);
+    const exact = bundleArtifacts.find((item: any) => clean(item.path || item.name || item.ref) === wanted);
+    const basename = wanted.split('/').pop();
+    const candidates = bundleArtifacts.filter((item: any) => clean(item.path || item.name || item.ref).split('/').pop() === basename);
+    const artifact = exact || (candidates.length === 1 ? candidates[0] : null);
+    if (artifact) {
+      const content = artifact.content ?? artifact.text ?? artifact.body ?? artifact.note;
+      setArtifactContent(typeof content === 'string' ? content : JSON.stringify(artifact, null, 2));
+      return;
+    }
+    const evidence = questData?.evidence?.find((item: any) => item.ref === artifactPath);
+    setArtifactContent([
+      evidence?.summary || 'This evidence item is recorded in the sealed docket.',
+      '',
+      `Reference: ${artifactPath}`,
+      '',
+      'This legacy IPFS bundle does not contain the file body. New evidence publications embed artifact contents and are readable here.',
+    ].join('\n'));
+  };
+
+  const viewIpfsProof = () => {
+    setArtifactName(`IPFS proof · ${questData?.docket?.ipfs_cid || ''}`);
+    setArtifactContent(evidenceBundle
+      ? JSON.stringify(evidenceBundle, null, 2)
+      : bundleError || 'The IPFS proof is still loading.');
   };
 
   // Open the character card and load the wallet's Mancers.
@@ -774,6 +935,9 @@ export default function App() {
     setArtifactName(null);
     setArtifactContent(null);
     setBundleArtifacts(null);
+    setEvidenceBundle(null);
+    setBundleError(null);
+    setBundleLoading(false);
     if (!selectedQuestId) {
       setQuestData(null);
       return;
@@ -789,12 +953,36 @@ export default function App() {
         // Pull the produced outputs from IPFS (content-addressed, nothing local).
         const cid = data?.docket?.ipfs_cid;
         if (cid) {
-          fetch(`https://gateway.pinata.cloud/ipfs/${cid}`)
-            .then(r => (r.ok ? r.json() : null))
-            .then(bundle => setBundleArtifacts(Array.isArray(bundle?.artifacts) ? bundle.artifacts : []))
-            .catch(() => setBundleArtifacts([]));
+          setBundleLoading(true);
+          const headers = walletAddress ? { 'x-wallet-address': walletAddress } : {};
+          const urls = [
+            `http://localhost:3001/job/${selectedQuestId}/evidence-bundle`,
+            `https://gateway.pinata.cloud/ipfs/${cid}`,
+            `https://ipfs.io/ipfs/${cid}`,
+            `https://${cid}.ipfs.dweb.link/`,
+          ];
+          (async () => {
+            let lastError = 'No IPFS gateway returned the evidence bundle.';
+            for (const url of urls) {
+              try {
+                const response = await fetch(url, { headers: url.startsWith('http://localhost') ? headers : {} });
+                if (!response.ok) { lastError = `Gateway returned HTTP ${response.status}`; continue; }
+                const bundle = await response.json();
+                const artifacts = bundle?.artifacts ?? bundle?.bundle?.artifacts ?? bundle?.data?.artifacts ?? [];
+                setEvidenceBundle(bundle);
+                setBundleArtifacts(Array.isArray(artifacts) ? artifacts : []);
+                setBundleError(null);
+                return;
+              } catch (error) {
+                lastError = error instanceof Error ? error.message : String(error);
+              }
+            }
+            setBundleArtifacts([]);
+            setBundleError(`IPFS evidence could not be loaded: ${lastError}`);
+          })().finally(() => setBundleLoading(false));
         } else {
           setBundleArtifacts(null);
+          setBundleError('This job does not have a published IPFS evidence bundle.');
         }
       })
       .catch(err => {
@@ -802,7 +990,7 @@ export default function App() {
         setQuestData(null);
       })
       .finally(() => setQuestLoading(false));
-  }, [selectedQuestId]);
+  }, [selectedQuestId, walletAddress]);
 
   // ----- Wallet connection logic -----
   const connectWallet = async () => {
@@ -913,6 +1101,7 @@ export default function App() {
   };
 
   // ----- Render -----
+  const selectedMapItem = mapLayout.find(item => item.id === selectedMapItemId) ?? null;
   return (
     <div style={{ padding: '1rem', fontFamily: 'sans-serif', position: 'relative', minHeight: '100vh' }}>
       {/* ==== Wallet bar (top‑right) ==== */}
@@ -1004,21 +1193,54 @@ export default function App() {
       {/* ==== Top-left action buttons ==== */}
       <div style={{ position: 'fixed', left: 12, top: 12, zIndex: 900, display: 'flex', gap: 8 }}>
         <button
-          onClick={openVault}
-          style={{ padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
-        >
-          📜 Evidence Vault
-        </button>
-        <button
           onClick={openCharacterCard}
           style={{ padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
         >
           🧙 {selectedMancer ? `Mancer #${selectedMancer.tokenId}` : 'Choose Character'}
         </button>
+        <button
+          onClick={toggleMapConfigMode}
+          aria-pressed={mapConfigMode}
+          style={{ padding: '6px 12px', background: mapConfigMode ? '#d97706' : '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
+        >
+          {mapConfigMode ? '✓ Finish Map Editing' : '🗺 Edit Map'}
+        </button>
       </div>
 
       {/* ==== Main game canvas ==== */}
-      <div id="game-container" style={{ width: '100%', maxWidth: 800, margin: '0 auto' }}></div>
+      <div style={{ width: '100%', maxWidth: 800, margin: '0 auto', position: 'relative' }}>
+        <div id="game-container" style={{ width: '100%' }}></div>
+        {mapConfigMode && (
+          <aside style={{ position: 'absolute', top: 12, right: 12, width: 230, maxHeight: 500, overflowY: 'auto', padding: 12, borderRadius: 6, background: '#171026ee', color: '#fff', zIndex: 20, boxShadow: '0 4px 18px #0008', fontFamily: 'monospace' }}>
+            <strong>Map config</strong>
+            <p style={{ margin: '6px 0 10px', color: '#c4b5dd', fontSize: 11 }}>Drag an object, or select it here and enter exact coordinates. Changes save in this browser.</p>
+            <select
+              value={selectedMapItemId ?? ''}
+              onChange={event => setSelectedMapItemId(event.target.value || null)}
+              style={{ width: '100%', marginBottom: 10, padding: 5 }}
+            >
+              <option value="">Select an object…</option>
+              <optgroup label="Buildings">
+                {mapLayout.filter(item => item.kind === 'building').map(item => <option key={item.id} value={item.id}>{item.key} ({item.x}, {item.y})</option>)}
+              </optgroup>
+              <optgroup label="Decorations">
+                {mapLayout.filter(item => item.kind === 'decor').map((item, index) => <option key={item.id} value={item.id}>{index + 1}. {item.key} ({item.x}, {item.y})</option>)}
+              </optgroup>
+            </select>
+            {selectedMapItem && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <label style={{ fontSize: 12 }}>X (0–{WORLD_WIDTH})
+                  <input type="number" min={0} max={WORLD_WIDTH} value={selectedMapItem.x} onChange={event => updateMapItem(selectedMapItem.id, Number(event.target.value), selectedMapItem.y)} style={{ boxSizing: 'border-box', width: '100%', marginTop: 3, padding: 5 }} />
+                </label>
+                <label style={{ fontSize: 12 }}>Y (0–{WORLD_HEIGHT})
+                  <input type="number" min={0} max={WORLD_HEIGHT} value={selectedMapItem.y} onChange={event => updateMapItem(selectedMapItem.id, selectedMapItem.x, Number(event.target.value))} style={{ boxSizing: 'border-box', width: '100%', marginTop: 3, padding: 5 }} />
+                </label>
+              </div>
+            )}
+            <button onClick={resetMapLayout} style={{ width: '100%', marginTop: 12, padding: 5, background: '#4b374f', color: '#fff', border: '1px solid #80638a', borderRadius: 3, cursor: 'pointer' }}>Reset default layout</button>
+          </aside>
+        )}
+      </div>
 
       {/* ==== Quest overlay (existing) ==== */}
       <QuestOverlay
@@ -1038,15 +1260,15 @@ export default function App() {
       {/* ==== Character selection card (pick your Mancer) ==== */}
       {characterOpen && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}
+          className="zelda-overlay"
           onClick={() => setCharacterOpen(false)}
         >
           <div
-            style={{ background: '#1e1230', color: '#fff', padding: '24px', borderRadius: '8px', width: '560px', maxWidth: '94%', maxHeight: '86vh', overflowY: 'auto', fontFamily: 'sans-serif' }}
+            className="zelda-card"
             onClick={e => e.stopPropagation()}
           >
-            <h2 style={{ marginTop: 0 }}>Choose your character</h2>
-            <p style={{ color: '#b9a7e0', fontSize: 13, marginTop: 0 }}>
+            <h2>Choose your character</h2>
+            <p className="zelda-muted" style={{ fontSize: 13, marginTop: 0 }}>
               Pick one of your Mancer NFTs. It becomes your in-game character.
             </p>
 
@@ -1063,11 +1285,10 @@ export default function App() {
                   return (
                     <button
                       key={m.tokenId}
+                      className={`zelda-choice${active ? ' zelda-choice--active' : ''}`}
                       onClick={() => chooseCharacter(m)}
                       style={{
-                        background: active ? '#4a327a' : '#2a1f40',
-                        border: active ? '2px solid #b98cff' : '2px solid transparent',
-                        borderRadius: 8, padding: 8, cursor: 'pointer', color: '#fff', textAlign: 'center',
+                        textAlign: 'center',
                       }}
                     >
                       {m.image ? (
@@ -1076,15 +1297,15 @@ export default function App() {
                         <div style={{ width: '100%', aspectRatio: '1 / 1', background: '#000', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#888' }}>no image</div>
                       )}
                       <div style={{ fontSize: 12, marginTop: 6 }}>{m.name || `Mancer #${m.tokenId}`}</div>
-                      <div style={{ fontSize: 10, color: '#9a86c8' }}>#{m.tokenId}</div>
+                      <div style={{ fontSize: 10 }}>#{m.tokenId}</div>
                     </button>
                   );
                 })}
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-              <button onClick={() => setCharacterOpen(false)} style={{ padding: '8px 16px' }}>Close</button>
+            <div className="zelda-actions">
+              <button className="zelda-button" onClick={() => setCharacterOpen(false)}>Close</button>
             </div>
           </div>
         </div>
@@ -1093,42 +1314,42 @@ export default function App() {
       {/* ==== Mission Intake (ask the player what they want) ==== */}
       {intakeBuilding && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}
+          className="zelda-overlay"
           onClick={() => setIntakeBuilding(null)}
         >
           <div
-            style={{ background: '#1e1230', color: '#fff', padding: '24px', borderRadius: '8px', width: '460px', maxWidth: '92%', fontFamily: 'sans-serif' }}
+            className="zelda-card"
             onClick={e => e.stopPropagation()}
           >
-            <h2 style={{ margin: '0 0 4px' }}>{intakeBuilding.name}</h2>
-            <p style={{ margin: '0 0 16px', color: '#b9a7e0', fontSize: 13 }}>
+            <h2>{intakeBuilding.name}</h2>
+            <p className="zelda-muted" style={{ margin: '0 0 16px', fontSize: 13 }}>
               Capability: <code>{intakeBuilding.action}</code>
             </p>
 
-            <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>Objective / target</label>
+            <label>Objective / target</label>
             <input
+              className="zelda-input"
               type="text"
               value={intakeTarget}
               onChange={e => setIntakeTarget(e.target.value)}
               placeholder={intakeBuilding.target}
-              style={{ width: '100%', padding: '8px', fontSize: 14, marginBottom: 12, boxSizing: 'border-box' }}
             />
 
-            <label style={{ display: 'block', fontSize: 13, marginBottom: 4 }}>What should be done?</label>
+            <label>What should be done?</label>
             <input
+              className="zelda-input zelda-input--paper"
               type="text"
               value={intakeDetails}
               onChange={e => setIntakeDetails(e.target.value)}
               placeholder={intakeBuilding.details}
-              style={{ width: '100%', padding: '8px', fontSize: 14, marginBottom: 16, boxSizing: 'border-box' }}
             />
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setIntakeBuilding(null)} style={{ padding: '8px 16px' }}>Cancel</button>
+            <div className="zelda-actions">
+              <button className="zelda-button" onClick={() => setIntakeBuilding(null)}>Cancel</button>
               <button
+                className="zelda-button zelda-button--primary"
                 onClick={dispatchMission}
                 disabled={!intakeTarget.trim()}
-                style={{ padding: '8px 16px', background: '#6a4fb0', color: '#fff', border: 'none', borderRadius: 4, cursor: intakeTarget.trim() ? 'pointer' : 'not-allowed' }}
               >
                 Dispatch Mission
               </button>
@@ -1139,55 +1360,31 @@ export default function App() {
 
       {/* ==== Vault Modal ==== */}
       {vaultOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }} onClick={() => {
+        <div className="zelda-overlay" onClick={() => {
           setVaultOpen(false);
           setSelectedQuestId(null);
           setQuestData(null);
         }}>
-          <div style={{
-            background: '#1e1230',
-            color: '#fff',
-            padding: '24px',
-            borderRadius: '8px',
-            width: '420px',
-            maxWidth: '90%',
-            maxHeight: '85vh',
-            overflowY: 'auto'
-          }} onClick={e => e.stopPropagation()}>
+          <div className="zelda-card" onClick={e => e.stopPropagation()}>
             {!selectedQuestId ? (
               <>
                 <h2>Completed Quests</h2>
                 {completedQuestIds.length === 0 ? (
                   <p>No completed quests yet.</p>
                 ) : (
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  <ul className="zelda-list">
                     {completedQuestIds.map(id => (
-                      <li key={id} style={{ padding: '8px 0', borderBottom: '1px solid #333' }}>
+                      <li key={id}>
                         <button onClick={() => {
                           setSelectedQuestId(id);
-                        }} style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#fff',
-                          textAlign: 'left',
-                          width: '100%',
-                          cursor: 'pointer'
-                        }}>
+                        }} className="zelda-button" style={{ textAlign: 'left', width: '100%' }}>
                           Quest {id}
                         </button>
                       </li>
                     ))}
                   </ul>
                 )}
-                <button onClick={() => setVaultOpen(false)} style={{ marginTop: '16px', padding: '8px 16px' }}>
+                <button className="zelda-button" onClick={() => setVaultOpen(false)} style={{ marginTop: '16px' }}>
                   Close
                 </button>
               </>
@@ -1202,21 +1399,14 @@ export default function App() {
                     {questData.docket && (
                       <>
                         <h4>Docket (IPFS CID: {questData.docket.ipfs_cid})</h4>
-                        <pre style={{
-                          background: '#000',
-                          padding: '12px',
-                          overflow: 'auto',
-                          maxHeight: '220px'
-                        }}>{JSON.stringify(questData.docket, null, 2)}</pre>
+                        <pre className="zelda-pre" style={{ maxHeight: '220px' }}>{JSON.stringify(questData.docket, null, 2)}</pre>
                         {questData.docket.ipfs_cid && (
-                          <div style={{ marginTop: '12px' }}>
-                            <a
-                              href={`https://gateway.pinata.cloud/ipfs/${questData.docket.ipfs_cid}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: '#4fc3f7' }}
-                            >
-                              View Proof on IPFS
+                          <div style={{ marginTop: '12px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button className="zelda-button zelda-button--primary" onClick={viewIpfsProof} disabled={bundleLoading}>
+                              {bundleLoading ? 'Loading IPFS proof…' : 'Read IPFS proof'}
+                            </button>
+                            <a href={`https://gateway.pinata.cloud/ipfs/${questData.docket.ipfs_cid}`} target="_blank" rel="noopener noreferrer" style={{ color: '#653486', fontWeight: 700 }}>
+                              Open on gateway ↗
                             </a>
                           </div>
                         )}
@@ -1226,14 +1416,16 @@ export default function App() {
                     {questData.evidence && questData.evidence.length > 0 && (
                       <div style={{ marginTop: 16 }}>
                         <h4 style={{ marginBottom: 8 }}>Evidence ({questData.evidence.length})</h4>
-                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                        {bundleError && <p className="zelda-muted" style={{ fontSize: 12 }}>{bundleError}</p>}
+                        <ul className="zelda-list">
                           {questData.evidence.map((e: any, i: number) => (
-                            <li key={i} style={{ padding: '6px 0', borderBottom: '1px solid #2a1f40', fontSize: 13 }}>
-                              <span style={{ color: '#b9a7e0' }}>[{e.type}]</span> {e.summary}
+                            <li key={i} style={{ fontSize: 13 }}>
+                              <span className="zelda-muted">[{e.type}]</span> {e.summary}
                               {e.ref && String(e.ref).startsWith('output/') && (
                                 <button
                                   onClick={() => viewArtifact(e.ref)}
-                                  style={{ marginLeft: 8, fontSize: 12, cursor: 'pointer', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 3, padding: '2px 8px' }}
+                                  className="zelda-button"
+                                  style={{ marginLeft: 8, fontSize: 12, padding: '2px 8px' }}
                                 >
                                   view file
                                 </button>
@@ -1245,9 +1437,9 @@ export default function App() {
                           <div style={{ marginTop: 10 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <strong style={{ fontSize: 12 }}>{artifactName}</strong>
-                              <button onClick={() => { setArtifactName(null); setArtifactContent(null); }} style={{ fontSize: 11 }}>close</button>
+                              <button className="zelda-button" onClick={() => { setArtifactName(null); setArtifactContent(null); }} style={{ fontSize: 11, padding: '2px 8px' }}>close</button>
                             </div>
-                            <pre style={{ background: '#000', padding: 12, overflow: 'auto', maxHeight: 200, fontSize: 12, whiteSpace: 'pre-wrap' }}>{artifactContent}</pre>
+                            <pre className="zelda-pre" style={{ maxHeight: 200, fontSize: 12, whiteSpace: 'pre-wrap' }}>{artifactContent}</pre>
                           </div>
                         )}
                       </div>
@@ -1263,17 +1455,19 @@ export default function App() {
                         </p>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '8px' }}>
                           <input
+                            className="zelda-input"
                             type="text"
                             value={ensLabel}
                             onChange={e => setEnsLabel(e.target.value)}
                             placeholder="yourlabel"
-                            style={{ flex: 1, padding: '6px', fontSize: '14px' }}
+                            style={{ flex: 1, fontSize: '14px' }}
                             disabled={ensMinting}
                           />
                           <button
+                            className="zelda-button zelda-button--primary"
                             onClick={handleEnsMint}
                             disabled={!ensLabel.trim() || ensMinting}
-                            style={{ padding: '6px 12px', fontSize: '14px', cursor: ensMinting ? 'not-allowed' : 'pointer' }}
+                            style={{ fontSize: '14px' }}
                           >
                             {ensMinting ? 'Minting…' : 'Claim'}
                           </button>
@@ -1295,11 +1489,12 @@ export default function App() {
                       </div>
                     )}
                     <button
+                      className="zelda-button"
                       onClick={() => {
                         setSelectedQuestId(null);
                         setQuestData(null);
                       }}
-                      style={{ marginTop: '16px', padding: '8px 16px' }}
+                      style={{ marginTop: '16px' }}
                     >
                       Back to List
                     </button>
