@@ -312,7 +312,7 @@ interface LeafCharacter { name: string; sheet: string; }
 const LEAF_CHARACTERS: LeafCharacter[] = [
   { name: 'Leaf', sheet: '/assets/leaf.png' },
   { name: 'Red Leaf', sheet: '/assets/leaf_red.png' },
-  { name: 'White Leaf', sheet: '/assets/leaf_white.png' },
+  { name: 'Split Leaf', sheet: '/assets/leaf_split.png' },
 ];
 
 /** Candidate token ids ever received by `address`, via Transfer(to=address) logs. */
