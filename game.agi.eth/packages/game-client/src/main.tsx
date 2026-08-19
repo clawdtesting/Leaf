@@ -307,6 +307,14 @@ function ipfsToHttp(uri?: string): string {
 
 interface OwnedMancer { tokenId: string; name?: string; image?: string; }
 
+interface LeafCharacter { name: string; sheet: string; }
+
+const LEAF_CHARACTERS: LeafCharacter[] = [
+  { name: 'Leaf', sheet: '/assets/leaf.png' },
+  { name: 'Red Leaf', sheet: '/assets/leaf_red.png' },
+  { name: 'White Leaf', sheet: '/assets/leaf_white.png' },
+];
+
 /** Candidate token ids ever received by `address`, via Transfer(to=address) logs. */
 async function receivedTokenIds(
   contract: any,
@@ -680,6 +688,7 @@ export default function App() {
   const [mancersError, setMancersError] = useState<string | null>(null);
   const [characterOpen, setCharacterOpen] = useState(false);
   const [selectedMancer, setSelectedMancer] = useState<OwnedMancer | null>(null);
+  const [selectedLeaf, setSelectedLeaf] = useState<LeafCharacter>(LEAF_CHARACTERS[0]);
   const [characterVersion, setCharacterVersion] = useState(0); // bump to reload the game with a new sheet
 
   // ----- Wallet / Auth state -----
@@ -854,7 +863,7 @@ export default function App() {
   // Open the character card and load the wallet's Mancers.
   const openCharacterCard = () => {
     setCharacterOpen(true);
-    if (!walletAddress) return;
+    if (!walletAddress || !mancerHolder) return;
     setMancersLoading(true);
     setMancersError(null);
     fetchOwnedMancers(walletAddress)
@@ -873,6 +882,16 @@ export default function App() {
   const chooseCharacter = (m: OwnedMancer) => {
     setSelectedMancer(m);
     CHARACTER_SHEET = `/assets/mancers/${m.tokenId}.png`;
+    setCharacterVersion(v => v + 1);
+    setCharacterOpen(false);
+  };
+
+  // Guests and connected wallets without a Mancer can play as any Leaf
+  // colour. These sheets are bundled locally and share the same 3x4 layout.
+  const chooseLeafCharacter = (character: LeafCharacter) => {
+    setSelectedLeaf(character);
+    setSelectedMancer(null);
+    CHARACTER_SHEET = character.sheet;
     setCharacterVersion(v => v + 1);
     setCharacterOpen(false);
   };
@@ -1196,7 +1215,7 @@ export default function App() {
           onClick={openCharacterCard}
           style={{ padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
         >
-          🧙 {selectedMancer ? `Mancer #${selectedMancer.tokenId}` : 'Choose Character'}
+          🧙 {selectedMancer ? `Mancer #${selectedMancer.tokenId}` : selectedLeaf.name}
         </button>
         <button
           onClick={toggleMapConfigMode}
@@ -1276,11 +1295,32 @@ export default function App() {
           >
             <h2>Choose your character</h2>
             <p className="zelda-muted" style={{ fontSize: 13, marginTop: 0 }}>
-              Pick one of your Mancer NFTs. It becomes your in-game character.
+              {walletAddress && mancerHolder
+                ? 'Pick one of your Mancer NFTs. It becomes your in-game character.'
+                : 'Choose a Leaf to begin your adventure. Connect a wallet that holds a Mancer to play as your NFT.'}
             </p>
 
-            {!walletAddress ? (
-              <p>Connect your wallet to see your Mancers.</p>
+            {!walletAddress || !mancerHolder ? (
+              <div className="character-grid">
+                {LEAF_CHARACTERS.map(character => {
+                  const active = !selectedMancer && selectedLeaf.sheet === character.sheet;
+                  return (
+                    <button
+                      key={character.sheet}
+                      className={`zelda-choice${active ? ' zelda-choice--active' : ''}`}
+                      onClick={() => chooseLeafCharacter(character)}
+                    >
+                      <div
+                        className="character-preview"
+                        role="img"
+                        aria-label={character.name}
+                        style={{ backgroundImage: `url(${character.sheet})` }}
+                      />
+                      <div style={{ fontSize: 12, marginTop: 6 }}>{character.name}</div>
+                    </button>
+                  );
+                })}
+              </div>
             ) : mancersLoading ? (
               <p>Loading your Mancers…</p>
             ) : mancersError ? (
