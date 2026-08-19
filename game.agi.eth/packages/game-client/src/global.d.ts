@@ -9,5 +9,6 @@ declare global {
     phaserGame?: import('phaser').Game;
     selectMapItem?: (id: string) => void;
     updateMapItem?: (id: string, x: number, y: number) => void;
+    openEvidenceVault?: () => void;
   }
 }

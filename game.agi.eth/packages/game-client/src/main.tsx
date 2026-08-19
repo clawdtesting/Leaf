@@ -670,6 +670,9 @@ export default function App() {
   const [artifactName, setArtifactName] = useState<string | null>(null);
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
   const [bundleArtifacts, setBundleArtifacts] = useState<any[] | null>(null);
+  const [evidenceBundle, setEvidenceBundle] = useState<any>(null);
+  const [bundleLoading, setBundleLoading] = useState(false);
+  const [bundleError, setBundleError] = useState<string | null>(null);
 
   // ----- Character (Mancer) selection -----
   const [mancers, setMancers] = useState<OwnedMancer[]>([]);
@@ -716,10 +719,12 @@ export default function App() {
       // The Explorer's Guild action lives on the map spread across its table.
       // Other interiors use a central workstation until bespoke hotspots are
       // defined for their artwork.
-      actionPoint: b.key === 'cabin'
-        ? { x: 0.25, y: 0.59, radius: 78, label: 'use the table map' }
-        : { x: 0.5, y: 0.48, radius: 72, label: `use ${b.name}` },
-      onAction: () => window.openIntake?.(b),
+      actions: b.key === 'cabin'
+        ? [
+            { x: 0.25, y: 0.59, radius: 78, label: 'use the table map', onAction: () => window.openIntake?.(b) },
+            { x: 0.225, y: 0.22, radius: 68, label: 'read the Evidence Vault', onAction: () => window.openEvidenceVault?.() },
+          ]
+        : [{ x: 0.5, y: 0.48, radius: 72, label: `use ${b.name}`, onAction: () => window.openIntake?.(b) }],
     }));
     const game = new Game({
       type: Phaser.AUTO,
@@ -792,21 +797,58 @@ export default function App() {
       .then(r => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
       .then((d: any) => {
         const ids = (d.jobs || []).filter((j: any) => j.status === 'completed').map((j: any) => j.jobId);
-        if (ids.length) setCompletedQuestIds(ids);
+        setCompletedQuestIds(ids);
       })
       .catch(err => console.error('Failed to load quest history:', err));
   };
+
+  useEffect(() => {
+    window.openEvidenceVault = openVault;
+    return () => { delete window.openEvidenceVault; };
+  }, [walletAddress]);
 
   // Show an evidence artifact's content — read from the IPFS bundle (nothing
   // local). The bundle is fetched by CID when the quest is opened.
   const viewArtifact = (artifactPath: string) => {
     setArtifactName(artifactPath);
     if (!bundleArtifacts) {
-      setArtifactContent('Outputs are only viewable once the evidence is published to IPFS.');
+      const evidence = questData?.evidence?.find((item: any) => item.ref === artifactPath);
+      setArtifactContent([
+        evidence?.summary || 'Evidence record available, but this job has no published file body.',
+        '',
+        `Reference: ${artifactPath}`,
+        `Publication: ${questData?.docket?.publication_status || 'not published'}`,
+        '',
+        'Complete artifact contents become readable here after the evidence bundle is published to IPFS.',
+      ].join('\n'));
       return;
     }
-    const a = bundleArtifacts.find((x: any) => x.path === artifactPath);
-    setArtifactContent(a?.content ?? a?.note ?? 'Artifact not found in the published bundle.');
+    const clean = (value: string) => decodeURIComponent(value || '').replace(/^\.\//, '').replace(/^\/+/, '');
+    const wanted = clean(artifactPath);
+    const exact = bundleArtifacts.find((item: any) => clean(item.path || item.name || item.ref) === wanted);
+    const basename = wanted.split('/').pop();
+    const candidates = bundleArtifacts.filter((item: any) => clean(item.path || item.name || item.ref).split('/').pop() === basename);
+    const artifact = exact || (candidates.length === 1 ? candidates[0] : null);
+    if (artifact) {
+      const content = artifact.content ?? artifact.text ?? artifact.body ?? artifact.note;
+      setArtifactContent(typeof content === 'string' ? content : JSON.stringify(artifact, null, 2));
+      return;
+    }
+    const evidence = questData?.evidence?.find((item: any) => item.ref === artifactPath);
+    setArtifactContent([
+      evidence?.summary || 'This evidence item is recorded in the sealed docket.',
+      '',
+      `Reference: ${artifactPath}`,
+      '',
+      'This legacy IPFS bundle does not contain the file body. New evidence publications embed artifact contents and are readable here.',
+    ].join('\n'));
+  };
+
+  const viewIpfsProof = () => {
+    setArtifactName(`IPFS proof · ${questData?.docket?.ipfs_cid || ''}`);
+    setArtifactContent(evidenceBundle
+      ? JSON.stringify(evidenceBundle, null, 2)
+      : bundleError || 'The IPFS proof is still loading.');
   };
 
   // Open the character card and load the wallet's Mancers.
@@ -893,6 +935,9 @@ export default function App() {
     setArtifactName(null);
     setArtifactContent(null);
     setBundleArtifacts(null);
+    setEvidenceBundle(null);
+    setBundleError(null);
+    setBundleLoading(false);
     if (!selectedQuestId) {
       setQuestData(null);
       return;
@@ -908,12 +953,36 @@ export default function App() {
         // Pull the produced outputs from IPFS (content-addressed, nothing local).
         const cid = data?.docket?.ipfs_cid;
         if (cid) {
-          fetch(`https://gateway.pinata.cloud/ipfs/${cid}`)
-            .then(r => (r.ok ? r.json() : null))
-            .then(bundle => setBundleArtifacts(Array.isArray(bundle?.artifacts) ? bundle.artifacts : []))
-            .catch(() => setBundleArtifacts([]));
+          setBundleLoading(true);
+          const headers = walletAddress ? { 'x-wallet-address': walletAddress } : {};
+          const urls = [
+            `http://localhost:3001/job/${selectedQuestId}/evidence-bundle`,
+            `https://gateway.pinata.cloud/ipfs/${cid}`,
+            `https://ipfs.io/ipfs/${cid}`,
+            `https://${cid}.ipfs.dweb.link/`,
+          ];
+          (async () => {
+            let lastError = 'No IPFS gateway returned the evidence bundle.';
+            for (const url of urls) {
+              try {
+                const response = await fetch(url, { headers: url.startsWith('http://localhost') ? headers : {} });
+                if (!response.ok) { lastError = `Gateway returned HTTP ${response.status}`; continue; }
+                const bundle = await response.json();
+                const artifacts = bundle?.artifacts ?? bundle?.bundle?.artifacts ?? bundle?.data?.artifacts ?? [];
+                setEvidenceBundle(bundle);
+                setBundleArtifacts(Array.isArray(artifacts) ? artifacts : []);
+                setBundleError(null);
+                return;
+              } catch (error) {
+                lastError = error instanceof Error ? error.message : String(error);
+              }
+            }
+            setBundleArtifacts([]);
+            setBundleError(`IPFS evidence could not be loaded: ${lastError}`);
+          })().finally(() => setBundleLoading(false));
         } else {
           setBundleArtifacts(null);
+          setBundleError('This job does not have a published IPFS evidence bundle.');
         }
       })
       .catch(err => {
@@ -921,7 +990,7 @@ export default function App() {
         setQuestData(null);
       })
       .finally(() => setQuestLoading(false));
-  }, [selectedQuestId]);
+  }, [selectedQuestId, walletAddress]);
 
   // ----- Wallet connection logic -----
   const connectWallet = async () => {
@@ -1124,16 +1193,17 @@ export default function App() {
       {/* ==== Top-left action buttons ==== */}
       <div style={{ position: 'fixed', left: 12, top: 12, zIndex: 900, display: 'flex', gap: 8 }}>
         <button
-          onClick={openVault}
-          style={{ padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
-        >
-          📜 Evidence Vault
-        </button>
-        <button
           onClick={openCharacterCard}
           style={{ padding: '6px 12px', background: '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
         >
           🧙 {selectedMancer ? `Mancer #${selectedMancer.tokenId}` : 'Choose Character'}
+        </button>
+        <button
+          onClick={toggleMapConfigMode}
+          aria-pressed={mapConfigMode}
+          style={{ padding: '6px 12px', background: mapConfigMode ? '#d97706' : '#3a2b5c', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'sans-serif' }}
+        >
+          {mapConfigMode ? '✓ Finish Map Editing' : '🗺 Edit Map'}
         </button>
         <button
           onClick={toggleMapConfigMode}
@@ -1338,14 +1408,12 @@ export default function App() {
                         <h4>Docket (IPFS CID: {questData.docket.ipfs_cid})</h4>
                         <pre className="zelda-pre" style={{ maxHeight: '220px' }}>{JSON.stringify(questData.docket, null, 2)}</pre>
                         {questData.docket.ipfs_cid && (
-                          <div style={{ marginTop: '12px' }}>
-                            <a
-                              href={`https://gateway.pinata.cloud/ipfs/${questData.docket.ipfs_cid}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ color: '#653486', fontWeight: 700 }}
-                            >
-                              View Proof on IPFS
+                          <div style={{ marginTop: '12px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button className="zelda-button zelda-button--primary" onClick={viewIpfsProof} disabled={bundleLoading}>
+                              {bundleLoading ? 'Loading IPFS proof…' : 'Read IPFS proof'}
+                            </button>
+                            <a href={`https://gateway.pinata.cloud/ipfs/${questData.docket.ipfs_cid}`} target="_blank" rel="noopener noreferrer" style={{ color: '#653486', fontWeight: 700 }}>
+                              Open on gateway ↗
                             </a>
                           </div>
                         )}
@@ -1355,6 +1423,7 @@ export default function App() {
                     {questData.evidence && questData.evidence.length > 0 && (
                       <div style={{ marginTop: 16 }}>
                         <h4 style={{ marginBottom: 8 }}>Evidence ({questData.evidence.length})</h4>
+                        {bundleError && <p className="zelda-muted" style={{ fontSize: 12 }}>{bundleError}</p>}
                         <ul className="zelda-list">
                           {questData.evidence.map((e: any, i: number) => (
                             <li key={i} style={{ fontSize: 13 }}>
