@@ -276,6 +276,10 @@ function update(this: Phaser.Scene) {
 // --------------------------------------------------------------
 const MANCER_CONTRACT_ADDRESS = import.meta.env.VITE_MANCER_CONTRACT_ADDRESS;
 const ROBINHOOD_RPC_URL = import.meta.env.VITE_ROBINHOOD_RPC_URL; // set in .env
+// Base URL of the Emperor backend. Local dev defaults to the ts-node server on
+// :3001; in production (e.g. Vercel) set VITE_API_BASE to the deployed backend
+// origin. Trailing slash trimmed so `${API_BASE}/path` is always clean.
+const API_BASE = (import.meta.env.VITE_API_BASE || 'http://localhost:3001').replace(/\/+$/, '');
 // Mancer is ERC721-C (usually NOT ERC721Enumerable), so we can't rely on
 // tokenOfOwnerByIndex. We enumerate via Transfer events to the wallet and
 // confirm current ownership with ownerOf.
@@ -485,7 +489,7 @@ async function fetchOwnedMancers(address: string, max = 48): Promise<OwnedMancer
   // on-chain enumeration so a missing key or indexing lag never hides tokens.
   try {
     const q = MANCER_CONTRACT_ADDRESS ? `?contract=${MANCER_CONTRACT_ADDRESS}` : '';
-    const resp = await fetch(`http://localhost:3001/mancers/${address}${q}`);
+    const resp = await fetch(`${API_BASE}/mancers/${address}${q}`);
     if (resp.ok) {
       const data = await resp.json();
       if (data?.available && Array.isArray(data.mancers) && data.mancers.length > 0) {
@@ -558,7 +562,7 @@ async function getProvider() {
 
 /** Fetch a nonce from the backend – you must implement /auth/nonce */
 async function fetchNonce(): Promise<string> {
-  const resp = await fetch('http://localhost:3001/auth/nonce');
+  const resp = await fetch(`${API_BASE}/auth/nonce`);
   if (!resp.ok) throw new Error('Unable to fetch nonce');
   const data = await resp.json();
   return data.nonce; // expect { nonce: "0x..." }
@@ -572,7 +576,7 @@ async function signMessage(provider: ethers.Provider, address: string, message: 
 
 /** Verify the signature with the backend – you must implement /auth/verify */
 async function verifySignature(address: string, signature: string): Promise<boolean> {
-  const resp = await fetch('http://localhost:3001/auth/verify', {
+  const resp = await fetch(`${API_BASE}/auth/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address, signature })
@@ -611,7 +615,7 @@ async function isMancerHolder(address: string): Promise<boolean> {
   }
 }
 async function mintEnsSubdomain(label: string): Promise<{ txHash?: string }> {
-  const resp = await fetch('http://localhost:3001/ens/mint', {
+  const resp = await fetch(`${API_BASE}/ens/mint`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ label })
@@ -627,7 +631,7 @@ async function mintEnsSubdomain(label: string): Promise<{ txHash?: string }> {
    Helper – send intent to backend (now includes auth header)
    -------------------------------------------------------------- */
 function sendIntent(b: BuildingDef, userAddress: string | null) {
-  fetch('http://localhost:3001/intent', {
+  fetch(`${API_BASE}/intent`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -800,7 +804,7 @@ export default function App() {
   // persisted quests (not just this session's).
   const openVault = () => {
     setVaultOpen(true);
-    fetch('http://localhost:3001/jobs', {
+    fetch(`${API_BASE}/jobs`, {
       headers: walletAddress ? { 'x-wallet-address': walletAddress } : {},
     })
       .then(r => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
@@ -921,7 +925,7 @@ export default function App() {
     if (!jobId) return;
     const interval = setInterval(async () => {
       try {
-        const resp = await fetch(`http://localhost:3001/job/${jobId}/status`, {
+        const resp = await fetch(`${API_BASE}/job/${jobId}/status`, {
           headers: walletAddress ? { 'x-wallet-address': walletAddress } : {},
         });
         if (!resp.ok) return;
@@ -962,7 +966,7 @@ export default function App() {
       return;
     }
     setQuestLoading(true);
-    fetch(`http://localhost:3001/job/${selectedQuestId}/status`, {
+    fetch(`${API_BASE}/job/${selectedQuestId}/status`, {
       headers: walletAddress ? { 'x-wallet-address': walletAddress } : {},
     })
       .then(async resp => {
@@ -975,7 +979,7 @@ export default function App() {
           setBundleLoading(true);
           const headers = walletAddress ? { 'x-wallet-address': walletAddress } : {};
           const urls = [
-            `http://localhost:3001/job/${selectedQuestId}/evidence-bundle`,
+            `${API_BASE}/job/${selectedQuestId}/evidence-bundle`,
             `https://gateway.pinata.cloud/ipfs/${cid}`,
             `https://ipfs.io/ipfs/${cid}`,
             `https://${cid}.ipfs.dweb.link/`,
