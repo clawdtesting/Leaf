@@ -1,0 +1,36 @@
+# Render Blueprint for the game.agi.eth Emperor backend.
+# Free web service. Import via Render: New → Blueprint → pick this repo.
+# Note (free tier): the service sleeps after ~15 min idle (~50s cold start) and
+# the filesystem is ephemeral, so missions.json resets on restart/redeploy.
+services:
+  - type: web
+    name: emperor-backend
+    runtime: node
+    plan: free
+    # The pnpm workspace lives in game.agi.eth/, not the repo root.
+    rootDir: game.agi.eth
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter emperor-backend build
+    startCommand: pnpm --filter emperor-backend start
+    healthCheckPath: /protocol/status
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # CORS allow-list — set to your Vercel domain(s), comma-separated.
+      # e.g. https://your-app.vercel.app
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # Backend secrets (set values in the Render dashboard; never commit them).
+      - key: ETH_RPC_URL
+        sync: false
+      - key: CHAIN_ID
+        sync: false
+      - key: PINATA_JWT
+        sync: false
+      - key: OPENSEA_KEY
+        sync: false
+      - key: OPENSEA_COLLECTION
+        sync: false
+      - key: OPENSEA_CHAIN
+        sync: false
+      - key: OPERATOR_ADDRESS
+        sync: false

@@ -46,16 +46,37 @@ uses the client-side Alchemy NFT API and on-chain reads. Features that call the
 backend (SIWE auth, mission intake, jobs/Evidence Vault, ENS mint) require
 `VITE_API_BASE` pointing at a running backend.
 
-## Backend (hosted separately)
+## Backend on Render (free)
 
 `packages/emperor-backend` is Express + `ts-node`, uses in-memory nonces and a
 file-backed `missions.json`, and can spawn agent work — none of which suit
-Vercel's serverless model. Host it on a platform that runs a persistent Node
-process (Render, Railway, Fly.io, or a VM):
+Vercel's serverless model. It runs as a persistent Node process. A free Render
+Blueprint is committed at the repo root: **`render.yaml`**.
 
-- Build: `pnpm --filter emperor-backend build`
-- Start: `pnpm --filter emperor-backend start` (serves on `PORT`, default 3001)
-- Set backend secrets there: `ETH_RPC_URL`, `PINATA_JWT`, `OPENSEA_KEY`,
-  `OPENSEA_COLLECTION`/`OPENSEA_CHAIN`, `OPERATOR_ADDRESS`, etc.
-- Enable CORS for the Vercel domain (the dev server currently allows `*`).
-- Point the frontend at it via `VITE_API_BASE`.
+**Free-tier caveats:** the service sleeps after ~15 min idle (~50s cold start on
+the next request) and the filesystem is ephemeral, so `missions.json` resets on
+restart/redeploy. Fine for a demo; move off free once missions must persist.
+
+### Deploy
+
+1. Render → **New → Blueprint**, pick the `clawdtesting/Leaf` repo. It reads
+   `render.yaml` (rootDir `game.agi.eth`, build
+   `pnpm --filter emperor-backend build`, start `pnpm --filter emperor-backend start`,
+   health check `/protocol/status`).
+2. Fill in the environment variables Render prompts for (all `sync: false`):
+   - `ALLOWED_ORIGINS` = your Vercel URL, e.g. `https://your-app.vercel.app`
+     (comma-separate multiple; this locks CORS to your site).
+   - `ETH_RPC_URL`, `CHAIN_ID`, `PINATA_JWT`, `OPENSEA_KEY`,
+     `OPENSEA_COLLECTION`/`OPENSEA_CHAIN`, `OPERATOR_ADDRESS` as needed.
+3. Deploy. Render gives you a URL like `https://emperor-backend.onrender.com`.
+
+### Wire the frontend to it
+
+In Vercel, set `VITE_API_BASE` to the Render URL and redeploy the frontend
+(Vite inlines it at build time). The mission pipeline, auth, jobs/Evidence Vault,
+and ENS mint then work end-to-end.
+
+### CORS
+
+The backend reads `ALLOWED_ORIGINS`: unset = allow any origin (dev); set = only
+those exact origins are allowed (production). See `packages/emperor-backend/.env.example`.

@@ -31,12 +31,25 @@ const nonces = new Map(); // key: ip, value: { nonce: string, expiry: number }
 const NONCE_EXPIRY_MS = 2 * 60 * 1000; // 2 minutes
 
 
-// Permissive CORS for the local game client (dev)
-app.use((_req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+// CORS. In dev (ALLOWED_ORIGINS unset) allow any origin. In production set
+// ALLOWED_ORIGINS to a comma-separated allow-list (e.g. your Vercel domain);
+// only a matching Origin is echoed back, everything else is refused.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.length === 0) {
+    res.header('Access-Control-Allow-Origin', '*');
+  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Vary', 'Origin');
+  }
   res.header('Access-Control-Allow-Headers', 'Content-Type, x-wallet-address');
   res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  if (_req.method === 'OPTIONS') return res.sendStatus(204);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 
